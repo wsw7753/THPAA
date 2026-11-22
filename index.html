@@ -175,13 +175,13 @@
               class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
               <div class="text-2xl mb-1">🏍️</div>
               <div class="font-bold text-white">一般用戶</div>
-              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站</div>
+              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站2~5</div>
             </button>
             <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
               class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
               <div class="text-2xl mb-1">🛡️</div>
               <div class="font-bold text-white">管理員模式</div>
-              <div class="text-xs text-slate-300 mt-0.5">救護總站（需密碼驗證）</div>
+              <div class="text-xs text-slate-300 mt-0.5">派案專員 / 最高權限</div>
             </button>
           </div>
         </div>
@@ -215,8 +215,8 @@
 
         <!-- 管理員模式：密碼輸入 -->
         <div id="adminPinGroup" class="hidden">
-          <label class="block text-sm font-semibold text-blue-300 mb-1">2. 輸入管理員密碼：</label>
-          <input type="password" id="inputAdminPin" placeholder="請輸入總站管理密碼"
+          <label class="block text-sm font-semibold text-blue-300 mb-1">2. 輸入管理員密碼（依密碼區分權限）：</label>
+          <input type="password" id="inputAdminPin" placeholder="請輸入派案專員或最高管理員密碼"
             onkeydown="if(event.key==='Enter') startSystem()"
             class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-blue-500/70 text-white placeholder-slate-400 focus:outline-none focus:border-blue-400 text-base tracking-wider" />
         </div>
@@ -352,7 +352,7 @@
       </div>
     </div>
 
-    <!-- ========== B. 管理員模式（救護總站）專屬指揮調度側邊欄 ========== -->
+    <!-- ========== B. 管理員模式（派案專員 / 最高權限）專屬指揮調度側邊欄 ========== -->
     <aside id="dispatchDashboard" class="hidden w-full md:w-[475px] h-[50dvh] md:h-full bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col z-[1000] shrink-0">
       <!-- 主分頁與快速工具列 -->
       <div class="flex items-center justify-between px-2.5 py-2 bg-slate-950 border-b border-slate-800 shrink-0 gap-1">
@@ -380,7 +380,7 @@
             class="px-2 py-1.5 rounded-lg text-xs font-bold bg-teal-700 hover:bg-teal-600 text-white shadow">
             📍 標站
           </button>
-          <button onclick="openEndEventModal()" title="賽後匯出資料並清空人員與紀錄"
+          <button id="btnOpenEndEvent" onclick="openEndEventModal()" title="賽後匯出資料並清空人員與紀錄（僅最高權限）"
             class="px-2 py-1.5 rounded-lg text-xs font-bold bg-rose-800 hover:bg-rose-700 text-rose-100 border border-rose-500/60 shadow">
             🏁 結算清空
           </button>
@@ -389,8 +389,8 @@
 
       <!-- 頁籤 1：案件編號追蹤與時間軸列表 -->
       <div id="panelCases" class="flex-1 overflow-y-auto p-3 space-y-2.5">
-        <!-- 賽事門禁控管：開放加入開關 & 本場賽事密碼 -->
-        <div class="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 mb-2.5 space-y-2">
+        <!-- 賽事門禁控管：開放加入開關 & 本場賽事密碼（僅最高權限可修改） -->
+        <div id="adminAccessControlCard" class="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 mb-2.5 space-y-2">
           <div class="flex items-center justify-between gap-2">
             <div class="text-xs">
               <span class="text-slate-400">人員加入狀態：</span>
@@ -405,14 +405,17 @@
           <div class="flex items-center gap-1.5">
             <input type="text" id="adminEventPasscodeInput" placeholder="設定本場賽事密碼（留空＝免密碼）"
               class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
-            <button type="button" onclick="saveEventPasscode()"
+            <button type="button" id="btnSaveEventPasscode" onclick="saveEventPasscode()"
               class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0">
               💾 更新密碼
             </button>
-            <button type="button" onclick="clearEventPasscode()" title="清除賽事密碼（改為免密碼）"
-              class="px-2 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
+            <button type="button" id="btnClearEventPasscode" onclick="clearEventPasscode()" title="清除賽事密碼（改為免密碼）"
+              class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
               清除
             </button>
+          </div>
+          <div id="dispatcherReadonlyHint" class="hidden text-[11px] text-slate-400">
+            ℹ️ 目前為「總站派案專員」權限：門禁開關、賽事密碼、踢除人員與結算清空功能已鎖定。
           </div>
         </div>
 
@@ -765,7 +768,7 @@
     </div>
   </div>
 
-  <!-- ==================== 8. 管理員：賽事結束結算匯出與全隊清空精靈 ==================== -->
+  <!-- ==================== 8. 最高權限管理員：賽事結束結算匯出與全隊清空精靈 ==================== -->
   <div id="endEventModal" class="hidden fixed inset-0 z-[2700] bg-black/85 flex items-center justify-center p-4">
     <div class="bg-slate-900 border-2 border-rose-500/70 rounded-2xl max-w-md w-full p-5 shadow-2xl">
       <div class="flex items-center justify-between mb-2">
@@ -773,7 +776,7 @@
         <button onclick="closeEndEventModal()" class="text-slate-400 hover:text-white text-xl px-2">✕</button>
       </div>
       <p class="text-xs text-slate-300 mb-4 leading-relaxed">
-        建議依序執行以下兩步驟，確保勤務紀錄與裝置碼稽核表完整保存後，再將線上人員登出並重置系統：
+        建議依序執行以下兩步驟，確保勤務紀錄與裝置碼稽核表完整保存後，再將線上人員登出並重置系統（僅限最高權限管理員）：
       </p>
 
       <!-- 步驟 1：匯出報表 -->
@@ -798,7 +801,7 @@
           <span>連同「賽道固定站點標註（救護站/補給站）」一併清空</span>
         </label>
 
-        <input type="password" id="endEventAdminPin" placeholder="請再次輸入管理員密碼確認清空"
+        <input type="password" id="endEventAdminPin" placeholder="請輸入最高權限管理員密碼確認清空"
           class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-rose-500/60 text-white placeholder-slate-400 text-sm mb-3 tracking-wider" />
 
         <button type="button" onclick="executeEndEventReset()"
@@ -854,7 +857,7 @@
 
   <script>
     // =========================================================================
-    // 1. FIREBASE 設定區 & 管理員密碼雜湊 (SHA-256)
+    // 1. FIREBASE 設定區 & 雙級管理員密碼雜湊 (SHA-256)
     // =========================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDqPdLDZfujmoSAadLJyp4fOGi9UEHge4U",
@@ -867,7 +870,10 @@
     };
 
     const DB_ROOT = 'marathon_ems_tracker';
-    const ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
+    // 總站派案專員密碼 SHA-256（可派案/結案/合併/補述/標站/匯出；不可清空/改門禁/踢除）
+    const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
+    // 最高權限管理員密碼 SHA-256（完整權限）
+    const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
 
     async function sha256Hex(text) {
@@ -887,6 +893,7 @@
     let db = null;
     let currentUser = null;
     let selectedRole = localStorage.getItem('ems_role') || 'rider';
+    let adminTier = 'NONE'; // 'NONE' | 'DISPATCHER' | 'SUPER'
     let savedCallsign = localStorage.getItem('ems_callsign') || '機巡01';
     let savedPersonName = localStorage.getItem('ems_person_name') || '';
     let unitName = '';
@@ -958,6 +965,10 @@
       ARRIVED:    ['已接觸選手評估中', '肌肉抽筋/噴劑處置', '擦挫傷/簡易包紮', '疑似熱衰竭/降溫中', '意識不清/請求救護車後送'],
       STANDBY:    ['處置完畢選手續跑', '已交接救護車後送', '選手棄賽已上收容車', '誤觸恢復待命']
     };
+
+    function isSuperAdmin() {
+      return selectedRole === 'dispatch' && adminTier === 'SUPER';
+    }
 
     function getOccupiedCallsignsSet() {
       const now = Date.now();
@@ -1231,7 +1242,7 @@
     });
 
     // =========================================================================
-    // 7. Firebase 初始化、門禁控管 & 身份登入
+    // 7. Firebase 初始化、門禁控管、權限分級 & 身份登入
     // =========================================================================
     function initFirebase() {
       const banner = document.getElementById('authStatusBanner');
@@ -1262,6 +1273,27 @@
       }
     }
 
+    function applyAdminTierPermissions() {
+      const superFlag = isSuperAdmin();
+
+      const endBtn = document.getElementById('btnOpenEndEvent');
+      if (endBtn) endBtn.classList.toggle('hidden', !superFlag);
+
+      const toggleEnrollBtn = document.getElementById('btnToggleEnrollment');
+      const passInput = document.getElementById('adminEventPasscodeInput');
+      const savePassBtn = document.getElementById('btnSaveEventPasscode');
+      const clearPassBtn = document.getElementById('btnClearEventPasscode');
+      const readonlyHint = document.getElementById('dispatcherReadonlyHint');
+
+      if (toggleEnrollBtn) toggleEnrollBtn.disabled = !superFlag;
+      if (passInput) passInput.disabled = !superFlag;
+      if (savePassBtn) savePassBtn.disabled = !superFlag;
+      if (clearPassBtn) clearPassBtn.disabled = !superFlag;
+      if (readonlyHint) readonlyHint.classList.toggle('hidden', superFlag);
+
+      syncAccessConfigUI();
+    }
+
     function listenToEventAccessConfig() {
       db.ref(`${DB_ROOT}/eventAccess`).on('value', (snap) => {
         const val = snap.val() || {};
@@ -1278,18 +1310,23 @@
       const badge = document.getElementById('adminEnrollmentStatusBadge');
       const toggleBtn = document.getElementById('btnToggleEnrollment');
       const passInput = document.getElementById('adminEventPasscodeInput');
+      const superFlag = isSuperAdmin();
 
       if (badge && toggleBtn) {
         if (eventAccessConfig.allowJoin) {
           badge.textContent = '🟢 開放加入中';
           badge.className = 'font-bold text-emerald-400';
           toggleBtn.textContent = '⛔ 停止開放';
-          toggleBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-700 hover:bg-rose-600 text-white transition';
+          toggleBtn.className = superFlag
+            ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-700 hover:bg-rose-600 text-white transition'
+            : 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 cursor-not-allowed';
         } else {
           badge.textContent = '⛔ 已停止開放';
           badge.className = 'font-bold text-rose-400';
           toggleBtn.textContent = '🟢 開放加入';
-          toggleBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition';
+          toggleBtn.className = superFlag
+            ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition'
+            : 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 cursor-not-allowed';
         }
       }
       if (passInput && document.activeElement !== passInput) {
@@ -1319,14 +1356,20 @@
     }
 
     async function toggleEventEnrollment() {
-      if (selectedRole !== 'dispatch') return;
+      if (!isSuperAdmin()) {
+        alert('⛔ 此操作僅限「最高權限管理員」執行！');
+        return;
+      }
       const nextAllow = !eventAccessConfig.allowJoin;
       await db.ref(`${DB_ROOT}/eventAccess/allowJoin`).set(nextAllow);
       alert(nextAllow ? '✅ 已恢復「開放加入」' : '⛔ 已設定為「停止開放加入」（已在線單位不受影響）');
     }
 
     async function saveEventPasscode() {
-      if (selectedRole !== 'dispatch') return;
+      if (!isSuperAdmin()) {
+        alert('⛔ 此操作僅限「最高權限管理員」執行！');
+        return;
+      }
       const raw = document.getElementById('adminEventPasscodeInput').value.trim();
       const nextVer = (eventAccessConfig.passcodeVersion || 0) + 1;
       await db.ref(`${DB_ROOT}/eventAccess`).update({
@@ -1341,7 +1384,10 @@
     }
 
     async function clearEventPasscode() {
-      if (selectedRole !== 'dispatch') return;
+      if (!isSuperAdmin()) {
+        alert('⛔ 此操作僅限「最高權限管理員」執行！');
+        return;
+      }
       document.getElementById('adminEventPasscodeInput').value = '';
       await saveEventPasscode();
     }
@@ -1389,6 +1435,7 @@
         });
       }
       isSystemStarted = false;
+      adminTier = 'NONE';
       populateCallsignDropdown();
       document.getElementById('inputAdminPin').value = '';
       document.getElementById('inputEventPasscode').value = '';
@@ -1403,6 +1450,7 @@
       let person = '';
 
       if (selectedRole === 'rider') {
+        adminTier = 'NONE';
         if (!eventAccessConfig.allowJoin) {
           alert('⛔ 目前救護總站已「停止開放加入」，暫時無法登入或加入系統！');
           return;
@@ -1449,19 +1497,26 @@
         unitName = person ? `${callsign} (${person})` : callsign;
       } else {
         const pinVal = document.getElementById('inputAdminPin').value.trim();
+        let inputHash = '';
         try {
-          const inputHash = await sha256Hex(pinVal);
-          if (inputHash !== ADMIN_PASSWORD_SHA256) {
-            alert('❌ 管理員密碼錯誤，請重新輸入！');
-            document.getElementById('inputAdminPin').value = '';
-            document.getElementById('inputAdminPin').focus();
-            return;
-          }
+          inputHash = await sha256Hex(pinVal);
         } catch (err) {
           alert('❌ 密碼驗證失敗：' + err.message);
           return;
         }
-        unitName = '救護總站（管理員）';
+
+        if (inputHash === SUPER_ADMIN_PASSWORD_SHA256) {
+          adminTier = 'SUPER';
+          unitName = '救護總站（最高權限）';
+        } else if (inputHash === DISPATCH_PASSWORD_SHA256) {
+          adminTier = 'DISPATCHER';
+          unitName = '救護總站（派案專員）';
+        } else {
+          alert('❌ 管理員密碼錯誤，請重新輸入！');
+          document.getElementById('inputAdminPin').value = '';
+          document.getElementById('inputAdminPin').focus();
+          return;
+        }
       }
 
       isSystemStarted = true;
@@ -1528,12 +1583,16 @@
         listenToMyDispatches();
         listenToSessionResetSignal();
       } else {
-        roleBadge.textContent = '🛡️ 管理員模式';
-        roleBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-blue-600 text-white shrink-0';
+        roleBadge.textContent = adminTier === 'SUPER' ? '👑 最高管理員' : '🛡️ 派案專員';
+        roleBadge.className = adminTier === 'SUPER'
+          ? 'px-2.5 py-1 rounded-md text-xs font-bold bg-amber-600 text-white shrink-0'
+          : 'px-2.5 py-1 rounded-md text-xs font-bold bg-blue-600 text-white shrink-0';
         document.getElementById('btnTestAlert').classList.add('hidden');
         document.getElementById('riderControlPanel').classList.add('hidden');
         document.getElementById('dispatchDashboard').classList.remove('hidden');
-        syncAccessConfigUI();
+        applyAdminTierPermissions();
+        renderDispatchUnitList();
+        renderDispatchCasesList();
 
         if (currentUser) {
           db.ref(`${DB_ROOT}/units/${currentUser.uid}`).remove();
@@ -1557,7 +1616,7 @@
           const kickTs = snap.val();
           if (!kickTs || !isSystemStarted || selectedRole !== 'rider') return;
           if (kickTs > sessionEnteredAt) {
-            forceLocalRiderLogout('⚠️ 您已被救護總站管理員登出（車號/站點已釋放），如需繼續執勤請重新選擇登入。');
+            forceLocalRiderLogout('⚠️ 您已被最高權限管理員登出（車號/站點已釋放），如需繼續執勤請重新選擇登入。');
           }
         });
       }
@@ -2611,7 +2670,7 @@
             <div style="font-size:11px; color:#475569; margin-bottom:4px;">類型：${meta.label}</div>
             ${poi.note ? `<div style="font-size:12px; margin-bottom:6px;">📝 ${escapeHtml(poi.note)}</div>` : ''}
             <a href="https://www.google.com/maps/dir/?api=1&destination=${poi.lat},${poi.lng}&travelmode=two-wheeler" target="_blank"
-              style="display:block; text-align:center; padding:5px 8px; background:#2563eb; color:#fff; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none;">
+              style="display:block; text-align:center; padding:5px 8px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none;">
               🧭 導航至此站點
             </a>
             ${adminDelBtn}
@@ -3091,6 +3150,7 @@
       const container = document.getElementById('panelUnits');
       const units = Object.values(allUnitsData);
       document.getElementById('onlineCount').textContent = units.length;
+      const superFlag = isSuperAdmin();
 
       if (units.length === 0) {
         container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無一般用戶（機巡/救護車/救護站）上線...</div>';
@@ -3130,6 +3190,13 @@
           ? `<span class="text-red-300 font-bold">🚨 待確認派遣 (${escapeHtml(disp.caseCode || '')})：</span>`
           : '📝 ';
 
+        const kickBtnHtml = superFlag
+          ? `<button onclick="adminKickUnit('${u.uid}')" title="強制登出並釋放此車號/站點"
+              class="px-2 py-1 rounded-lg text-xs font-bold bg-rose-900/80 hover:bg-rose-700 text-rose-200 border border-rose-600/50">
+              👢 踢除
+             </button>`
+          : '';
+
         return `
           <div class="p-3 rounded-xl bg-slate-800/90 border ${cardBorderClass} transition">
             <div class="flex items-center justify-between mb-1.5 gap-2">
@@ -3145,10 +3212,7 @@
                   class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
                   📢 派案
                 </button>
-                <button onclick="adminKickUnit('${u.uid}')" title="強制登出並釋放此車號/站點"
-                  class="px-2 py-1 rounded-lg text-xs font-bold bg-rose-900/80 hover:bg-rose-700 text-rose-200 border border-rose-600/50">
-                  👢 踢除
-                </button>
+                ${kickBtnHtml}
               </div>
             </div>
             <div onclick="focusUnit('${u.uid}')" class="cursor-pointer text-xs text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
@@ -3177,6 +3241,10 @@
     }
 
     async function adminKickUnit(uid) {
+      if (!isSuperAdmin()) {
+        alert('⛔ 僅「最高權限管理員」可強制踢除線上單位！');
+        return;
+      }
       const unit = allUnitsData[uid];
       if (!unit) return;
       if (!confirm(`確定要強制踢除「${unit.name}」並釋放該項目嗎？\n（對方手機將會自動登出並停止定位）`)) return;
@@ -3185,8 +3253,12 @@
       await db.ref(`${DB_ROOT}/units/${uid}`).remove();
     }
 
-    // --- 賽後結算精靈（匯出報表 + 強制人員登出並清空資料） ---
+    // --- 賽後結算精靈（匯出報表 + 強制人員登出並清空資料，限最高權限） ---
     function openEndEventModal() {
+      if (!isSuperAdmin()) {
+        alert('⛔ 僅「最高權限管理員」可開啟結算清空功能！');
+        return;
+      }
       document.getElementById('endEventAdminPin').value = '';
       document.getElementById('chkAlsoClearPois').checked = false;
       document.getElementById('endEventModal').classList.remove('hidden');
@@ -3236,11 +3308,16 @@
     }
 
     async function executeEndEventReset() {
+      if (!isSuperAdmin()) {
+        alert('⛔ 僅「最高權限管理員」可執行清空操作！');
+        return;
+      }
+
       const pin = document.getElementById('endEventAdminPin').value.trim();
       try {
         const inputHash = await sha256Hex(pin);
-        if (inputHash !== ADMIN_PASSWORD_SHA256) {
-          alert('❌ 管理員密碼錯誤，無法執行清空！');
+        if (inputHash !== SUPER_ADMIN_PASSWORD_SHA256) {
+          alert('❌ 最高權限管理員密碼錯誤，無法執行清空！');
           return;
         }
       } catch (err) {
