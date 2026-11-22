@@ -2056,7 +2056,10 @@
     function listenToDispatches() {
       db.ref(`${DB_ROOT}/dispatches`).on('value', (snapshot) => {
         allDispatchesData = snapshot.val() || {};
-        if (selectedRole === 'dispatch') renderDispatchUnitList();
+        if (selectedRole === 'dispatch') {
+          renderDispatchUnitList();
+          renderDispatchCasesList();
+        }
       });
     }
 
@@ -2293,7 +2296,10 @@
         allUnitsData = snapshot.val() || {};
         if (!isSystemStarted) populateCallsignDropdown();
         renderMapMarkers();
-        if (selectedRole === 'dispatch') renderDispatchUnitList();
+        if (selectedRole === 'dispatch') {
+          renderDispatchUnitList();
+          renderDispatchCasesList();
+        }
       });
     }
 
@@ -2506,6 +2512,38 @@
       container.innerHTML = filtered.map(c => {
         const isActive = c.status === 'ACTIVE';
         const unitsList = c.assignedUnits ? Object.values(c.assignedUnits).join('、') : '未指派';
+
+        // 檢視該案件指派車輛的派遣確認 / 逾時未回狀態
+        const assignedEntries = c.assignedUnits ? Object.entries(c.assignedUnits) : [];
+        const dispatchBadges = [];
+        assignedEntries.forEach(([uid, uName]) => {
+          const disp = allDispatchesData[uid];
+          if (disp && disp.caseId === c.caseId) {
+            if (!disp.acknowledged) {
+              if (disp.deliveryWarning) {
+                dispatchBadges.push(
+                  `<span class="px-1.5 py-0.5 rounded text-[11px] font-black bg-red-600 text-yellow-200 animate-pulse">${escapeHtml(uName)}：🔴 逾時未確認</span>`
+                );
+              } else {
+                dispatchBadges.push(
+                  `<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-900/90 text-rose-200 border border-rose-500/60">${escapeHtml(uName)}：🔴 未確認派遣</span>`
+                );
+              }
+            } else {
+              dispatchBadges.push(
+                `<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-700/50">${escapeHtml(uName)}：🟢 已確認</span>`
+              );
+            }
+          }
+        });
+
+        const dispatchStatusBarHtml = dispatchBadges.length > 0
+          ? `<div class="flex flex-wrap items-center gap-1 mb-2">
+               <span class="text-[11px] text-slate-400 mr-0.5">派遣回執：</span>
+               ${dispatchBadges.join('')}
+             </div>`
+          : '';
+
         const timelineItems = c.timeline
           ? Object.values(c.timeline).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
           : [];
@@ -2539,6 +2577,8 @@
               <span class="truncate">🚑 參與單位：<b class="text-white">${escapeHtml(unitsList)}</b></span>
               <span class="text-[11px] shrink-0 ${isActive ? 'text-red-400 font-bold' : 'text-emerald-400'}">${isActive ? '● 處理中' : '✓ 已結案'}</span>
             </div>
+
+            ${dispatchStatusBarHtml}
 
             ${c.transportDestination ? `
               <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 rounded-lg px-2 py-1 mb-2">
@@ -2844,7 +2884,10 @@
     }
 
     setInterval(() => {
-      if (selectedRole === 'dispatch') renderDispatchUnitList();
+      if (selectedRole === 'dispatch') {
+        renderDispatchUnitList();
+        renderDispatchCasesList();
+      }
       if (!isSystemStarted) populateCallsignDropdown();
     }, 10000);
   </script>
