@@ -325,11 +325,17 @@
           </button>
         </div>
 
-        <!-- 任務結束結案並恢復待命按鈕 -->
-        <button id="btnActionStandby" onclick="openReportModal('STANDBY')"
-          class="hidden w-full mt-2.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-sm transition">
-          ✅ 任務結束結案，恢復「待命巡邏」狀態
-        </button>
+<!-- 進行中任務輔助按鈕：補標事故定位點 / 結案恢復待命 -->
+        <div id="riderActiveActionsRow" class="hidden grid grid-cols-2 gap-2.5 mt-2.5">
+          <button type="button" onclick="pinCurrentLocationToActiveCase()"
+            class="py-2.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow transition">
+            📍 標定目前位置為事故點
+          </button>
+          <button id="btnActionStandby" type="button" onclick="openReportModal('STANDBY')"
+            class="py-2.5 px-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 active:scale-[0.98] text-white font-bold text-xs sm:text-sm transition">
+            ✅ 任務結案恢復待命
+          </button>
+        </div>
       </div>
     </div>
 
@@ -782,6 +788,7 @@
     let mapPickPurpose = null;
     let selectedDispatchCoords = null;
     let adminDraftPinMarker = null;
+    let closedCasePinMarker = null;
     let supportTargetCaseId = '';
     let radioTargetCaseId = '';
     let pendingPoiCoords = null;
@@ -1267,25 +1274,39 @@
 
       setTimeout(() => map.invalidateSize(), 250);
     }
-
-    // 監聽總站賽後「強制全隊登出清空」廣播訊號
+    
+// 監聽總站賽後「強制全隊登出清空」與「單車踢除」廣播訊號
     function listenToSessionResetSignal() {
       db.ref(`${DB_ROOT}/systemControl/lastResetAt`).on('value', (snap) => {
         const resetTs = snap.val();
         if (!resetTs || !isSystemStarted || selectedRole !== 'rider') return;
         if (resetTs > sessionEnteredAt) {
-          isSystemStarted = false;
-          if (watchId !== null) {
-            navigator.geolocation.clearWatch(watchId);
-            watchId = null;
-          }
-          stopContinuousAlarm();
-          currentStatus = 'STANDBY';
-          activeCaseId = null;
-          alert('🏁 本場賽事已結束，總站已清空系統資料並將所有車輛登出，感謝您的辛勞！');
-          reopenSetup();
+          forceLocalRiderLogout('🏁 本場賽事已結束，總站已清空系統資料並將所有車輛登出，感謝您的辛勞！');
         }
       });
+
+      if (currentUser) {
+        db.ref(`${DB_ROOT}/systemControl/kickedUids/${currentUser.uid}`).on('value', (snap) => {
+          const kickTs = snap.val();
+          if (!kickTs || !isSystemStarted || selectedRole !== 'rider') return;
+          if (kickTs > sessionEnteredAt) {
+            forceLocalRiderLogout('⚠️ 您已被救護總站管理員登出（車號已釋放），如需繼續執勤請重新選擇車號登入。');
+          }
+        });
+      }
+    }
+
+    function forceLocalRiderLogout(msg) {
+      isSystemStarted = false;
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      stopContinuousAlarm();
+      currentStatus = 'STANDBY';
+      activeCaseId = null;
+      alert(msg);
+      reopenSetup();
     }
 
     // =========================================================================
@@ -1541,16 +1562,46 @@
       document.getElementById('riderLastNote').textContent = note ? `(${note})` : '';
       document.getElementById('riderLastTime').textContent = formatTime(timestampMs);
 
-      const standbyBtn = document.getElementById('btnActionStandby');
+    const activeRow = document.getElementById('riderActiveActionsRow');
       if (status === 'DISPATCHED' || status === 'ARRIVED') {
-        standbyBtn.classList.remove('hidden');
+        activeRow.classList.remove('hidden');
       } else {
-        standbyBtn.classList.add('hidden');
+        activeRow.classList.add('hidden');
       }
 
       updateRiderActiveCaseBanner();
     }
+async function pinCurrentLocationToActiveCase() {
+      if (!myCoords) {
+        alert('⚠️ 尚未取得您目前的 GPS 座標，請稍候再試！');
+        return;
+      }
+      if (!activeCaseId || !allCasesData[activeCaseId] || allCasesData[activeCaseId].status !== 'ACTIVE') {
+        alert('⚠️ 您目前沒有綁定進行中的案件，請先按「🚨 出勤」或「🏥 到達」立案！');
+        return;
+      }
 
+      const c = allCasesData[activeCaseId];
+      const lat = Number(myCoords.lat.toFixed(6));
+      const lng = Number(myCoords.lng.toFixed(6));
+
+      await db.ref(`${DB_ROOT}/cases/${activeCaseId}`).update({
+        lat: lat,
+        lng: lng
+      });
+
+      await appendCaseTimeline(
+        activeCaseId,
+        unitName,
+        '📍 回報現場精準定位點',
+        `更新事故座標為 (${lat}, ${lng})`,
+        getShortDeviceCode()
+      );
+
+      map.flyTo([lat, lng], 17);
+      alert(`✅ 已將您目前的位置設為案件 ${c.caseCode} 的精準事故點，總站與支援車輛地圖已同步更新！`);
+    }
+    
     function updateRiderActiveCaseBanner() {
       const banner = document.getElementById('riderActiveCaseBanner');
       const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
@@ -2353,11 +2404,46 @@
       }).join('');
     }
 
-    function focusCaseOnMap(caseId) {
+function focusCaseOnMap(caseId) {
       const c = allCasesData[caseId];
-      if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
-        map.flyTo([c.lat, c.lng], 17);
+      if (!c || typeof c.lat !== 'number' || typeof c.lng !== 'number') return;
+
+      map.flyTo([c.lat, c.lng], 17);
+
+      if (c.status === 'ACTIVE') {
+        if (closedCasePinMarker) {
+          map.removeLayer(closedCasePinMarker);
+          closedCasePinMarker = null;
+        }
         if (caseMarkers[caseId]) caseMarkers[caseId].openPopup();
+      } else {
+        const unitsText = c.assignedUnits ? Object.values(c.assignedUnits).join('、') : '無';
+        const iconHtml = `
+          <div class="case-pin-wrapper">
+            <div class="case-pin-badge" style="background:#334155; border-color:#94a3b8; color:#e2e8f0;">
+              ✅ ${escapeHtml(c.caseCode)} (已結案)
+            </div>
+            <div class="case-pin-icon" style="animation:none;">📍</div>
+          </div>
+        `;
+        const popupHtml = `
+          <div style="color:#0f172a; min-width:195px;">
+            <div style="font-weight:900; font-size:13px; color:#334155; margin-bottom:2px;">✅ 歷史案件 ${escapeHtml(c.caseCode)}</div>
+            <div style="font-size:12px; font-weight:700; margin-bottom:3px;">${escapeHtml(c.summary)}</div>
+            <div style="font-size:11px; color:#475569;"><b>出勤單位：</b>${escapeHtml(unitsText)}</div>
+            <button onclick="if(closedCasePinMarker){map.removeLayer(closedCasePinMarker);closedCasePinMarker=null;}"
+              style="margin-top:6px; width:100%; padding:4px; background:#64748b; color:#fff; border:none; border-radius:6px; font-size:11px; cursor:pointer;">
+              隱藏此歷史標記
+            </button>
+          </div>
+        `;
+
+        if (closedCasePinMarker) map.removeLayer(closedCasePinMarker);
+        closedCasePinMarker = L.marker([c.lat, c.lng], {
+          zIndexOffset: 1050,
+          icon: L.divIcon({ className: '', html: iconHtml })
+        }).addTo(map);
+        closedCasePinMarker.bindPopup(popupHtml).openPopup();
       }
     }
 
