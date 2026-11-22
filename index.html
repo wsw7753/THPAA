@@ -54,13 +54,43 @@
       font-size: 12px;
     }
 
+    /* 目標事故點標記樣式 */
+    .target-pin-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -100%);
+    }
+    .target-pin-label {
+      background-color: #dc2626;
+      color: #fef08a;
+      font-weight: 900;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 8px;
+      border: 2px solid #fef08a;
+      white-space: nowrap;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.8);
+      margin-bottom: 2px;
+    }
+    .target-pin-icon {
+      font-size: 28px;
+      filter: drop-shadow(0 3px 4px rgba(0,0,0,0.8));
+      animation: bounce-pin 1s infinite alternate;
+    }
+
+    @keyframes bounce-pin {
+      from { transform: translateY(0); }
+      to { transform: translateY(-6px); }
+    }
+
     /* 狀態顏色定義 */
-    .status-standby { background-color: #10b981; } /* 綠色：待命 */
+    .status-standby { background-color: #10b981; }
     .status-dispatched {
       background-color: #ef4444;
       animation: pulse-red 1.2s infinite;
-    } /* 紅色閃爍：出勤中 */
-    .status-arrived { background-color: #3b82f6; } /* 藍色：已到達 */
+    }
+    .status-arrived { background-color: #3b82f6; }
     .status-offline { background-color: #64748b; opacity: 0.8; }
 
     @keyframes pulse-red {
@@ -77,7 +107,11 @@
       animation: alert-border 0.9s infinite;
     }
 
-    /* 自訂捲軸 */
+    /* 選點模式準星游標 */
+    .crosshair-cursor {
+      cursor: crosshair !important;
+    }
+
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #1e293b; }
     ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
@@ -152,7 +186,7 @@
     </div>
 
     <div class="flex items-center gap-1.5 shrink-0">
-      <!-- 測試提示音與震動按鈕（一般用戶端顯示） -->
+      <!-- 測試提示音與震動按鈕 -->
       <button id="btnTestAlert" onclick="testAlertSound()" title="測試派遣提示音與震動"
         class="hidden px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">
         🔔 測音
@@ -183,6 +217,12 @@
     <!-- 地圖容器 -->
     <div id="map" class="flex-1 h-full w-full z-0"></div>
 
+    <!-- 管理員地圖選點提示浮動條 -->
+    <div id="mapPickBanner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-[1100] bg-amber-600 text-white px-4 py-2 rounded-full shadow-2xl border-2 border-yellow-200 flex items-center gap-3 text-xs font-bold whitespace-nowrap">
+      <span>🎯 請直接點擊地圖上的「事故目標位置」</span>
+      <button onclick="cancelMapPickMode()" class="bg-black/30 hover:bg-black/50 px-2 py-0.5 rounded-full">取消</button>
+    </div>
+
     <!-- 地圖右下角：回到我的位置按鈕 -->
     <button onclick="centerToMe()" title="定位到我的位置"
       class="absolute bottom-4 right-4 z-[900] bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-600 p-3 rounded-full shadow-xl">
@@ -192,13 +232,21 @@
     <!-- ========== A. 一般用戶（機車救護組）專屬底部操作面板 ========== -->
     <div id="riderControlPanel" class="hidden bg-slate-900 border-t border-slate-700 p-3 pb-4 md:p-4 z-[1000] shrink-0">
       <div class="max-w-2xl mx-auto">
-        <!-- 最新總站派遣橫幅 -->
+        <!-- 最新總站派遣橫幅（含目標定位導航按鈕） -->
         <div id="riderActiveTaskBanner" class="hidden bg-red-950/90 border border-red-500 rounded-xl px-3 py-2 mb-2.5 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-[11px] font-bold text-red-300">📢 總站最新派遣任務 (<span id="riderTaskTime">--:--</span>)</div>
+          <div class="min-w-0 flex-1">
+            <div class="text-[11px] font-bold text-red-300">📢 總站派遣任務 (<span id="riderTaskTime">--:--</span>)</div>
             <div id="riderTaskContent" class="text-xs font-bold text-white truncate"></div>
           </div>
-          <button onclick="dismissTaskBanner()" class="text-xs px-2 py-1 rounded bg-red-900 text-red-200 shrink-0">關閉</button>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="btnBannerLocate" onclick="focusTargetMarker()" class="hidden text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold">
+              📍 看點位
+            </button>
+            <button id="btnBannerNav" onclick="navigateToTarget()" class="hidden text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold">
+              🧭 導航
+            </button>
+            <button onclick="dismissTaskBanner()" class="text-xs px-2 py-1 rounded bg-red-900 text-red-200">✕</button>
+          </div>
         </div>
 
         <!-- 目前狀態與最新備註顯示 -->
@@ -251,7 +299,7 @@
           </button>
         </div>
         <div class="flex gap-1">
-          <button onclick="openAdminDispatchModal('')" title="指定派遣機車組"
+          <button onclick="openAdminDispatchModal('', null)" title="指定派遣機車組"
             class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
             📢 派遣
           </button>
@@ -264,6 +312,11 @@
             🗑️
           </button>
         </div>
+      </div>
+
+      <!-- 提示管理員可直接點地圖標點 -->
+      <div class="bg-slate-800/70 px-3 py-1.5 text-[11px] text-amber-300 border-b border-slate-800 flex items-center justify-between">
+        <span>💡 提示：直接點擊左側地圖任意處，可標定事故座標並派遣！</span>
       </div>
 
       <!-- 頁籤 1：各機車組即時狀態與一鍵派遣列表 -->
@@ -306,9 +359,9 @@
     </div>
   </div>
 
-  <!-- ==================== 5. 管理員模式：指定派遣機車對話框 ==================== -->
+  <!-- ==================== 5. 管理員模式：指定派遣機車對話框（含定位標記） ==================== -->
   <div id="adminDispatchModal" class="hidden fixed inset-0 z-[2600] bg-black/80 flex items-end sm:items-center justify-center p-3">
-    <div class="bg-slate-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+    <div class="bg-slate-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[92dvh] overflow-y-auto">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-black text-amber-400">📢 管理員派遣指令</h3>
         <button onclick="closeAdminDispatchModal()" class="text-slate-400 hover:text-white text-xl px-2">✕</button>
@@ -321,8 +374,33 @@
         </select>
       </div>
 
+      <!-- 目標定位座標設定區 -->
+      <div class="mb-3 p-3 rounded-xl bg-slate-800/90 border border-slate-700">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-amber-300">2. 事故目標定位（選填，前線可一鍵導航）：</span>
+          <button type="button" id="btnClearDispatchCoords" onclick="clearDispatchCoords()" class="hidden text-[11px] text-red-400 hover:underline">
+            清除座標
+          </button>
+        </div>
+
+        <div id="dispatchCoordsDisplay" class="text-xs text-slate-400 mb-2 font-mono">
+          尚未標定目標座標（純文字派遣）
+        </div>
+
+        <div class="flex gap-2">
+          <button type="button" onclick="enterMapPickMode()"
+            class="flex-1 py-2 px-2.5 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-xs font-bold flex items-center justify-center gap-1">
+            🗺️ 點選地圖標定位置
+          </button>
+          <button type="button" onclick="promptManualCoords()"
+            class="py-2 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold">
+            ✏️ 輸入經緯度
+          </button>
+        </div>
+      </div>
+
       <div class="mb-3">
-        <label class="block text-xs font-semibold text-slate-300 mb-1.5">2. 快捷任務指令：</label>
+        <label class="block text-xs font-semibold text-slate-300 mb-1.5">3. 快捷任務指令：</label>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" onclick="appendDispatchText('選手倒地請求支援，請立即前往')"
             class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
@@ -344,8 +422,8 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-xs font-semibold text-slate-300 mb-1">3. 任務地點 / 補充細節：</label>
-        <textarea id="adminDispatchNote" rows="3" placeholder="例：約 12.5K 處有跑者中暑暈眩，請前往評估..."
+        <label class="block text-xs font-semibold text-slate-300 mb-1">4. 任務地點 / 補充細節：</label>
+        <textarea id="adminDispatchNote" rows="2" placeholder="例：約 12.5K 處有跑者中暑暈眩，請前往評估..."
           class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 text-sm"></textarea>
       </div>
 
@@ -374,12 +452,19 @@
       <div class="my-4 p-4 rounded-xl bg-red-950/60 border border-red-500/70 text-left">
         <div class="text-xs text-red-300 mb-1">總站派遣內容：</div>
         <div id="incomingDispatchMessage" class="text-base font-bold text-white leading-relaxed whitespace-pre-wrap"></div>
+        <div id="incomingDispatchCoordsBadge" class="hidden mt-2 pt-2 border-t border-red-800/60 text-xs text-amber-300 font-mono">
+          📍 已附帶事故點精準座標（地圖已標示紅點）
+        </div>
       </div>
 
       <div class="space-y-2.5">
         <button type="button" onclick="acknowledgeDispatch(true)"
           class="w-full py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-base shadow-lg">
           🚨 收到！立即轉為「出勤」狀態
+        </button>
+        <button type="button" id="btnIncomingNav" onclick="acknowledgeAndNavigate()"
+          class="hidden w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg">
+          🧭 收到轉「出勤」並開啟 Google 導航
         </button>
         <button type="button" onclick="acknowledgeDispatch(false)"
           class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">
@@ -413,7 +498,7 @@
     };
 
     const DB_ROOT = 'marathon_ems_tracker';
-    const ADMIN_PASSWORD = '8868'; // 管理員模式登入密碼
+    const ADMIN_PASSWORD = '8868';
 
     // =========================================================================
     // 2. 全域變數與狀態管理
@@ -439,6 +524,13 @@
     let alertRepeatTimer = null;
     let latestDispatchObj = null;
     let lastHandledDispatchId = localStorage.getItem('ems_last_dispatch_id') || '';
+
+    // 目標座標標記相關變數
+    let selectedDispatchCoords = null; // 管理員準備派出的目標點 {lat, lng}
+    let adminDraftPinMarker = null;    // 管理員在地圖上點選的暫存圖釘
+    let isMapPickMode = false;         // 是否正在「點選地圖標定位置」模式
+    let activeTargetCoords = null;     // 前線隊員目前任務的目標點 {lat, lng}
+    let riderTargetMarker = null;      // 前線地圖上顯示的紅色任務目標點
 
     const unitMarkers = {};
     let allUnitsData = {};
@@ -528,7 +620,7 @@
     }
 
     // =========================================================================
-    // 4. 初始化地圖（Leaflet + 台灣國土測繪中心圖磚）
+    // 4. 初始化地圖（Leaflet + 台灣國土測繪中心圖磚 + 管理員點擊標定）
     // =========================================================================
     function initMap() {
       map = L.map('map', {
@@ -541,6 +633,70 @@
         attribution: '&copy; 內政部國土測繪中心',
         maxZoom: 19
       }).addTo(map);
+
+      // 管理員點擊地圖標定目標點
+      map.on('click', (e) => {
+        if (selectedRole !== 'dispatch' || !isSystemStarted) return;
+
+        const { lat, lng } = e.latlng;
+        setAdminDraftPin(lat, lng);
+
+        if (isMapPickMode) {
+          // 從派遣視窗點「點選地圖標定位置」進來的，選完自動回到派遣視窗
+          exitMapPickModeUI();
+          document.getElementById('adminDispatchModal').classList.remove('hidden');
+        } else {
+          // 直接點地圖空白處，在圖釘上彈出「派遣至此處」氣泡
+          if (adminDraftPinMarker) {
+            adminDraftPinMarker.openPopup();
+          }
+        }
+      });
+    }
+
+    function setAdminDraftPin(lat, lng) {
+      selectedDispatchCoords = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+      updateDispatchCoordsDisplay();
+
+      const pinHtml = `
+        <div class="target-pin-wrapper">
+          <div class="target-pin-label">📍 派遣目標點</div>
+          <div class="target-pin-icon">📌</div>
+        </div>
+      `;
+
+      const popupHtml = `
+        <div style="color:#0f172a; min-width:170px; text-align:center;">
+          <div style="font-weight:800; font-size:13px; margin-bottom:2px;">📍 已標定目標位置</div>
+          <div style="font-size:11px; color:#475569; font-family:monospace; margin-bottom:6px;">
+            ${selectedDispatchCoords.lat}, ${selectedDispatchCoords.lng}
+          </div>
+          <button onclick="openAdminDispatchModal('', true)"
+            style="width:100%; padding:6px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:800; font-size:12px; cursor:pointer;">
+            🚨 派遣機車至此處
+          </button>
+        </div>
+      `;
+
+      if (adminDraftPinMarker) {
+        adminDraftPinMarker.setLatLng([lat, lng]);
+        adminDraftPinMarker.setPopupContent(popupHtml);
+      } else {
+        adminDraftPinMarker = L.marker([lat, lng], {
+          zIndexOffset: 1200,
+          icon: L.divIcon({ className: '', html: pinHtml })
+        }).addTo(map);
+        adminDraftPinMarker.bindPopup(popupHtml);
+      }
+    }
+
+    function removeAdminDraftPin() {
+      if (adminDraftPinMarker) {
+        map.removeLayer(adminDraftPinMarker);
+        adminDraftPinMarker = null;
+      }
+      selectedDispatchCoords = null;
+      updateDispatchCoordsDisplay();
     }
 
     // =========================================================================
@@ -659,6 +815,7 @@
 
     function reopenSetup() {
       stopContinuousAlarm();
+      cancelMapPickMode();
       document.getElementById('inputAdminPin').value = '';
       document.getElementById('setupModal').classList.remove('hidden');
     }
@@ -675,7 +832,6 @@
         unitName = inputVal;
         localStorage.setItem('ems_unit_name', unitName);
       } else {
-        // 驗證管理員密碼
         const pinVal = document.getElementById('inputAdminPin').value.trim();
         if (pinVal !== ADMIN_PASSWORD) {
           alert('❌ 管理員密碼錯誤，請重新輸入！');
@@ -703,6 +859,7 @@
         document.getElementById('btnTestAlert').classList.remove('hidden');
         document.getElementById('riderControlPanel').classList.remove('hidden');
         document.getElementById('dispatchDashboard').classList.add('hidden');
+        removeAdminDraftPin();
 
         const snap = await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).once('value');
         const existing = snap.val();
@@ -736,6 +893,7 @@
         document.getElementById('btnTestAlert').classList.add('hidden');
         document.getElementById('riderControlPanel').classList.add('hidden');
         document.getElementById('dispatchDashboard').classList.remove('hidden');
+        clearRiderTargetMarker();
 
         if (currentUser) {
           db.ref(`${DB_ROOT}/units/${currentUser.uid}`).remove();
@@ -905,6 +1063,12 @@
         updatePayload.lng = myCoords.lng;
       }
 
+      // 若任務結束恢復待命，自動清除地圖上的目標任務紅點
+      if (newStatus === 'STANDBY') {
+        clearRiderTargetMarker();
+        dismissTaskBanner();
+      }
+
       await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update(updatePayload);
       await writeLogRecord(currentStatus, note);
       syncLocalRiderUI(currentStatus, note, nowMs);
@@ -940,9 +1104,9 @@
     }
 
     // =========================================================================
-    // 9. 管理員派遣機制（發送指令 & 一般用戶端接收提示音震動）
+    // 9. 管理員派遣機制（含目標定位座標標定 & 前線地圖紅點與導航）
     // =========================================================================
-    function openAdminDispatchModal(preselectUid) {
+    function openAdminDispatchModal(preselectUid, keepExistingPin) {
       const selectEl = document.getElementById('dispatchTargetSelect');
       const units = Object.values(allUnitsData);
 
@@ -957,12 +1121,69 @@
         return `<option value="${u.uid}" ${selectedAttr}>${escapeHtml(u.name)} (${meta.short})</option>`;
       }).join('');
 
+      if (!keepExistingPin) {
+        removeAdminDraftPin();
+      } else {
+        updateDispatchCoordsDisplay();
+      }
+
       document.getElementById('adminDispatchNote').value = '';
       document.getElementById('adminDispatchModal').classList.remove('hidden');
     }
 
     function closeAdminDispatchModal() {
       document.getElementById('adminDispatchModal').classList.add('hidden');
+      removeAdminDraftPin();
+    }
+
+    function enterMapPickMode() {
+      isMapPickMode = true;
+      document.getElementById('adminDispatchModal').classList.add('hidden');
+      document.getElementById('mapPickBanner').classList.remove('hidden');
+      document.getElementById('map').classList.add('crosshair-cursor');
+    }
+
+    function exitMapPickModeUI() {
+      isMapPickMode = false;
+      document.getElementById('mapPickBanner').classList.add('hidden');
+      document.getElementById('map').classList.remove('crosshair-cursor');
+    }
+
+    function cancelMapPickMode() {
+      exitMapPickModeUI();
+      if (selectedDispatchCoords) {
+        document.getElementById('adminDispatchModal').classList.remove('hidden');
+      }
+    }
+
+    function promptManualCoords() {
+      const input = prompt('請貼上座標（格式：緯度, 經度，例如：23.0015, 120.2045）：');
+      if (!input) return;
+      const parts = input.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        setAdminDraftPin(parts[0], parts[1]);
+        map.flyTo([parts[0], parts[1]], 17);
+      } else {
+        alert('座標格式不正確，請輸入如：23.0015, 120.2045');
+      }
+    }
+
+    function clearDispatchCoords() {
+      removeAdminDraftPin();
+    }
+
+    function updateDispatchCoordsDisplay() {
+      const dispEl = document.getElementById('dispatchCoordsDisplay');
+      const clearBtn = document.getElementById('btnClearDispatchCoords');
+      if (selectedDispatchCoords) {
+        dispEl.textContent = `📍 已標定：${selectedDispatchCoords.lat}, ${selectedDispatchCoords.lng}`;
+        dispEl.className = 'text-xs text-emerald-400 font-bold mb-2 font-mono';
+        clearBtn.classList.remove('hidden');
+      } else {
+        dispEl.textContent = '尚未標定目標座標（純文字派遣）';
+        dispEl.className = 'text-xs text-slate-400 mb-2 font-mono';
+        clearBtn.classList.add('hidden');
+      }
     }
 
     function appendDispatchText(txt) {
@@ -974,14 +1195,16 @@
       const targetUid = document.getElementById('dispatchTargetSelect').value;
       const msg = document.getElementById('adminDispatchNote').value.trim();
       if (!targetUid) return;
-      if (!msg) {
-        alert('請輸入或點選派遣任務內容！');
+      if (!msg && !selectedDispatchCoords) {
+        alert('請輸入任務內容，或標定事故目標位置！');
         return;
       }
 
       const targetUnit = allUnitsData[targetUid];
       const targetName = targetUnit ? targetUnit.name : '指定機車組';
       const dispatchId = `disp_${Date.now()}`;
+      const finalMsg = msg || '請立即前往地圖標定之目標點支援';
+      const coordsCopy = selectedDispatchCoords ? { ...selectedDispatchCoords } : null;
 
       const btn = document.getElementById('btnSendDispatch');
       btn.disabled = true;
@@ -992,23 +1215,29 @@
           dispatchId: dispatchId,
           targetUid: targetUid,
           targetName: targetName,
-          message: msg,
+          message: finalMsg,
+          targetLat: coordsCopy ? coordsCopy.lat : null,
+          targetLng: coordsCopy ? coordsCopy.lng : null,
           acknowledged: false,
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
+
+        const logNote = coordsCopy
+          ? `${finalMsg} [目標座標: ${coordsCopy.lat}, ${coordsCopy.lng}]`
+          : finalMsg;
 
         await db.ref(`${DB_ROOT}/logs`).push({
           uid: currentUser.uid,
           name: `🛡️ 總站 ➔ ${targetName}`,
           action: 'ADMIN_DISPATCH',
-          note: msg,
-          lat: targetUnit ? targetUnit.lat : null,
-          lng: targetUnit ? targetUnit.lng : null,
+          note: logNote,
+          lat: coordsCopy ? coordsCopy.lat : (targetUnit ? targetUnit.lat : null),
+          lng: coordsCopy ? coordsCopy.lng : (targetUnit ? targetUnit.lng : null),
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
 
         closeAdminDispatchModal();
-        alert(`✅ 已發送派遣指令給「${targetName}」，對方手機將立即響鈴與震動！`);
+        alert(`✅ 已發送派遣指令給「${targetName}」！`);
       } catch (err) {
         alert('派遣發送失敗：' + err.message);
       } finally {
@@ -1017,6 +1246,7 @@
       }
     }
 
+    // 一般用戶監聽發給自己的派遣指令
     function listenToMyDispatches() {
       if (!currentUser) return;
       db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).on('value', (snapshot) => {
@@ -1025,13 +1255,80 @@
         if (data.dispatchId === lastHandledDispatchId) return;
 
         latestDispatchObj = data;
+        const hasCoords = typeof data.targetLat === 'number' && typeof data.targetLng === 'number';
+
         document.getElementById('incomingDispatchMessage').textContent = data.message;
         document.getElementById('incomingDispatchTime').textContent =
           `總站於 ${data.timestamp ? formatTime(data.timestamp) : '剛剛'} 發出派遣`;
-        document.getElementById('incomingDispatchModal').classList.remove('hidden');
 
+        const coordsBadge = document.getElementById('incomingDispatchCoordsBadge');
+        const navBtn = document.getElementById('btnIncomingNav');
+
+        if (hasCoords) {
+          coordsBadge.classList.remove('hidden');
+          navBtn.classList.remove('hidden');
+          setRiderTargetMarker(data.targetLat, data.targetLng, data.message);
+        } else {
+          coordsBadge.classList.add('hidden');
+          navBtn.classList.add('hidden');
+        }
+
+        document.getElementById('incomingDispatchModal').classList.remove('hidden');
         startContinuousAlarm();
       });
+    }
+
+    function setRiderTargetMarker(lat, lng, desc) {
+      activeTargetCoords = { lat, lng };
+      const pinHtml = `
+        <div class="target-pin-wrapper">
+          <div class="target-pin-label">🎯 事故目標點</div>
+          <div class="target-pin-icon">🚨</div>
+        </div>
+      `;
+      const popupHtml = `
+        <div style="color:#0f172a; min-width:180px;">
+          <div style="font-weight:800; font-size:13px; color:#dc2626; margin-bottom:4px;">🎯 總站指定目標點</div>
+          <div style="font-size:12px; margin-bottom:6px;">${escapeHtml(desc)}</div>
+          <button onclick="navigateToTarget()"
+            style="width:100%; padding:6px 8px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
+            🧭 開啟 Google Maps 導航
+          </button>
+        </div>
+      `;
+
+      if (riderTargetMarker) {
+        riderTargetMarker.setLatLng([lat, lng]);
+        riderTargetMarker.setPopupContent(popupHtml);
+      } else {
+        riderTargetMarker = L.marker([lat, lng], {
+          zIndexOffset: 1300,
+          icon: L.divIcon({ className: '', html: pinHtml })
+        }).addTo(map);
+        riderTargetMarker.bindPopup(popupHtml);
+      }
+      map.flyTo([lat, lng], 16);
+    }
+
+    function clearRiderTargetMarker() {
+      if (riderTargetMarker) {
+        map.removeLayer(riderTargetMarker);
+        riderTargetMarker = null;
+      }
+      activeTargetCoords = null;
+    }
+
+    function focusTargetMarker() {
+      if (activeTargetCoords) {
+        map.flyTo([activeTargetCoords.lat, activeTargetCoords.lng], 17);
+        if (riderTargetMarker) riderTargetMarker.openPopup();
+      }
+    }
+
+    function navigateToTarget() {
+      if (!activeTargetCoords) return;
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${activeTargetCoords.lat},${activeTargetCoords.lng}&travelmode=two-wheeler`;
+      window.open(url, '_blank');
     }
 
     async function acknowledgeDispatch(switchToDispatched) {
@@ -1050,6 +1347,15 @@
 
       document.getElementById('riderTaskContent').textContent = disp.message;
       document.getElementById('riderTaskTime').textContent = disp.timestamp ? formatTime(disp.timestamp) : formatTime(Date.now());
+
+      const hasCoords = typeof disp.targetLat === 'number' && typeof disp.targetLng === 'number';
+      if (hasCoords) {
+        document.getElementById('btnBannerLocate').classList.remove('hidden');
+        document.getElementById('btnBannerNav').classList.remove('hidden');
+      } else {
+        document.getElementById('btnBannerLocate').classList.add('hidden');
+        document.getElementById('btnBannerNav').classList.add('hidden');
+      }
       document.getElementById('riderActiveTaskBanner').classList.remove('hidden');
 
       if (switchToDispatched) {
@@ -1057,6 +1363,11 @@
       } else {
         await writeLogRecord('ACK_DISPATCH', `已確認收到總站指令：${disp.message}`);
       }
+    }
+
+    async function acknowledgeAndNavigate() {
+      await acknowledgeDispatch(true);
+      navigateToTarget();
     }
 
     function dismissTaskBanner() {
@@ -1106,7 +1417,7 @@
         `;
 
         const adminDispatchBtnHtml = selectedRole === 'dispatch'
-          ? `<button onclick="openAdminDispatchModal('${unit.uid}')"
+          ? `<button onclick="openAdminDispatchModal('${unit.uid}', false)"
               style="margin-top:6px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
               📢 派遣此機車組
              </button>`
@@ -1188,7 +1499,7 @@
                   ${meta.label}
                 </span>
               </div>
-              <button onclick="openAdminDispatchModal('${u.uid}')"
+              <button onclick="openAdminDispatchModal('${u.uid}', false)"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shrink-0 shadow">
                 📢 派遣此組
               </button>
@@ -1295,6 +1606,7 @@
         return;
       }
       await db.ref(`${DB_ROOT}`).remove();
+      removeAdminDraftPin();
       alert('已清空所有紀錄！');
     }
 
