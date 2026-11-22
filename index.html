@@ -175,7 +175,7 @@
               class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
               <div class="text-2xl mb-1">🏍️</div>
               <div class="font-bold text-white">一般用戶</div>
-              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站</div>
+              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站2~5</div>
             </button>
             <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
               class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
@@ -186,12 +186,15 @@
           </div>
         </div>
 
-        <!-- 一般用戶：車輛下拉選單 + 姓名 -->
+        <!-- 一般用戶：車輛/救護站下拉選單 + 姓名 + 賽事密碼 -->
         <div id="riderInputGroup" class="space-y-3">
+          <div id="enrollmentClosedBanner" class="hidden text-xs font-bold text-rose-200 bg-rose-950/80 border border-rose-500/70 rounded-lg px-3 py-2">
+            ⛔ 總站目前「停止開放加入」，請聯繫救護總站確認或稍後再試。
+          </div>
           <div>
             <div class="flex items-center justify-between mb-1">
-              <label class="block text-sm font-semibold text-slate-300">2. 選擇車輛呼號：</label>
-              <span class="text-[11px] text-slate-400">已執勤車號自動鎖定防重</span>
+              <label class="block text-sm font-semibold text-slate-300">2. 選擇車輛或救護站：</label>
+              <span class="text-[11px] text-slate-400">已執勤自動鎖定防重</span>
             </div>
             <select id="selectVehicleCallsign"
               class="w-full px-3 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white font-bold text-base focus:outline-none focus:border-emerald-500">
@@ -201,6 +204,12 @@
             <label class="block text-sm font-semibold text-slate-300 mb-1">3. 隊員姓名或代號（選填）：</label>
             <input type="text" id="inputPersonName" placeholder="例：王A 或 EMT-1（建議用代號）"
               class="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 text-base" />
+          </div>
+          <div id="eventPasscodeInputWrapper" class="hidden">
+            <label class="block text-sm font-semibold text-amber-300 mb-1">4. 本場賽事密碼：</label>
+            <input type="password" id="inputEventPasscode" placeholder="請輸入本場賽事密碼"
+              onkeydown="if(event.key==='Enter') startSystem()"
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-amber-500/70 text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 text-base tracking-wider" />
           </div>
         </div>
 
@@ -279,7 +288,7 @@
       🎯
     </button>
 
-    <!-- ========== A. 一般用戶（機巡 / 救護車）專屬底部操作面板 ========== -->
+    <!-- ========== A. 一般用戶（機巡 / 救護車 / 救護站）專屬底部操作面板 ========== -->
     <div id="riderControlPanel" class="hidden bg-slate-900 border-t border-slate-700 p-3 pb-4 md:p-4 z-[1000] shrink-0">
       <div class="max-w-2xl mx-auto">
         <!-- 目前執行中案件橫幅 -->
@@ -354,7 +363,7 @@
           </button>
           <button id="tabUnits" onclick="switchDispatchTab('units')"
             class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700">
-            🏍️ 車輛 (<span id="onlineCount">0</span>)
+            🏍️ 單位 (<span id="onlineCount">0</span>)
           </button>
           <button id="tabPois" onclick="switchDispatchTab('pois')"
             class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700">
@@ -380,6 +389,33 @@
 
       <!-- 頁籤 1：案件編號追蹤與時間軸列表 -->
       <div id="panelCases" class="flex-1 overflow-y-auto p-3 space-y-2.5">
+        <!-- 賽事門禁控管：開放加入開關 & 本場賽事密碼 -->
+        <div class="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 mb-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs">
+              <span class="text-slate-400">人員加入狀態：</span>
+              <span id="adminEnrollmentStatusBadge" class="font-bold text-emerald-400">🟢 開放加入中</span>
+            </div>
+            <button type="button" id="btnToggleEnrollment" onclick="toggleEventEnrollment()"
+              class="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-700 hover:bg-rose-600 text-white transition">
+              ⛔ 停止開放
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <input type="text" id="adminEventPasscodeInput" placeholder="設定本場賽事密碼（留空＝免密碼）"
+              class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
+            <button type="button" onclick="saveEventPasscode()"
+              class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0">
+              💾 更新密碼
+            </button>
+            <button type="button" onclick="clearEventPasscode()" title="清除賽事密碼（改為免密碼）"
+              class="px-2 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
+              清除
+            </button>
+          </div>
+        </div>
+
         <div class="flex items-center justify-between text-xs mb-1">
           <span class="font-bold text-slate-300">案件狀態篩選：</span>
           <div class="flex gap-1">
@@ -393,9 +429,9 @@
         </div>
       </div>
 
-      <!-- 頁籤 2：線上機巡與救護車即時狀態 -->
+      <!-- 頁籤 2：線上機巡、救護車與救護站即時狀態 -->
       <div id="panelUnits" class="hidden flex-1 overflow-y-auto p-3 space-y-2.5">
-        <div class="text-center text-slate-500 text-sm py-8">目前尚無車輛上線...</div>
+        <div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>
       </div>
 
       <!-- 頁籤 3：賽道固定站點管理列表 -->
@@ -466,7 +502,7 @@
       <div id="supportCaseNotice" class="hidden mb-3 p-2.5 rounded-xl bg-blue-950/70 border border-blue-500/60 text-xs text-blue-200"></div>
 
       <div class="mb-3">
-        <label class="block text-xs font-semibold text-slate-300 mb-1">1. 選擇派遣車輛（機巡 / 救護車）：</label>
+        <label class="block text-xs font-semibold text-slate-300 mb-1">1. 選擇派遣單位（機巡 / 救護車 / 救護站）：</label>
         <select id="dispatchTargetSelect"
           class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold focus:outline-none focus:border-amber-500">
         </select>
@@ -610,7 +646,7 @@
 
       <label class="flex items-center gap-2 text-xs text-slate-300 mb-4 bg-slate-800/70 p-2.5 rounded-xl border border-slate-700 cursor-pointer">
         <input type="checkbox" id="chkSyncUnitArrived" class="w-4 h-4 accent-purple-500" />
-        <span>同時將該車輛在地圖上的狀態更新為「🏥 到達現場」</span>
+        <span>同時將該單位在地圖上的狀態更新為「🏥 到達現場」</span>
       </label>
 
       <div class="grid grid-cols-2 gap-3">
@@ -754,7 +790,7 @@
       <div class="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/60">
         <div class="text-xs font-bold text-rose-300 mb-1">步驟 2：清空資料並強制全隊人員離線</div>
         <div class="text-[11px] text-slate-300 mb-2.5">
-          執行後將清除所有案件編號、派遣通知與車輛定位，並自動讓所有線上機巡/救護車手機登出停止 GPS 追蹤。
+          執行後將清除所有案件編號、派遣通知與單位定位，並自動讓所有線上機巡/救護車/救護站手機登出停止 GPS 追蹤。
         </div>
 
         <label class="flex items-center gap-2 text-xs text-slate-300 mb-3 cursor-pointer">
@@ -868,6 +904,12 @@
     let isSystemStarted = false;
     let sessionEnteredAt = 0;
 
+    let eventAccessConfig = {
+      allowJoin: true,
+      passcode: '',
+      passcodeVersion: 0
+    };
+
     // 音效與派遣通知
     let audioCtx = null;
     let alertRepeatTimer = null;
@@ -936,9 +978,9 @@
     }
 
     // =========================================================================
-    // 3. 初始化車輛下拉選單（機巡01~15、救護車91~95）並鎖定已佔用車號
+    // 3. 初始化下拉選單（機巡01~15、救護車91~95、第2~第5救護站）並鎖定已佔用
     // =========================================================================
-function populateCallsignDropdown() {
+    function populateCallsignDropdown() {
       const sel = document.getElementById('selectVehicleCallsign');
       const occupiedSet = getOccupiedCallsignsSet();
 
@@ -1189,7 +1231,7 @@ function populateCallsignDropdown() {
     });
 
     // =========================================================================
-    // 7. Firebase 初始化與身份登入（含即時防撞號驗證、SHA-256 驗證與重連恢復）
+    // 7. Firebase 初始化、門禁控管 & 身份登入
     // =========================================================================
     function initFirebase() {
       const banner = document.getElementById('authStatusBanner');
@@ -1203,8 +1245,9 @@ function populateCallsignDropdown() {
             currentUser = userCredential.user;
             banner.className = 'text-xs text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 rounded-lg px-3 py-2';
             banner.textContent = `✅ 雲端連線成功 (裝置碼: ${getShortDeviceCode()})`;
-            document.getElementById('btnStartSystem').disabled = false;
+            syncAccessConfigUI();
 
+            listenToEventAccessConfig();
             listenToUnits();
             listenToPois();
             listenToDispatches();
@@ -1217,6 +1260,90 @@ function populateCallsignDropdown() {
         banner.className = 'text-xs text-red-400 bg-red-950/50 border border-red-800/60 rounded-lg px-3 py-2';
         banner.textContent = `❌ Firebase 初始化錯誤：${err.message}`;
       }
+    }
+
+    function listenToEventAccessConfig() {
+      db.ref(`${DB_ROOT}/eventAccess`).on('value', (snap) => {
+        const val = snap.val() || {};
+        eventAccessConfig = {
+          allowJoin: val.allowJoin !== false,
+          passcode: typeof val.passcode === 'string' ? val.passcode : '',
+          passcodeVersion: Number(val.passcodeVersion || 0)
+        };
+        syncAccessConfigUI();
+      });
+    }
+
+    function syncAccessConfigUI() {
+      const badge = document.getElementById('adminEnrollmentStatusBadge');
+      const toggleBtn = document.getElementById('btnToggleEnrollment');
+      const passInput = document.getElementById('adminEventPasscodeInput');
+
+      if (badge && toggleBtn) {
+        if (eventAccessConfig.allowJoin) {
+          badge.textContent = '🟢 開放加入中';
+          badge.className = 'font-bold text-emerald-400';
+          toggleBtn.textContent = '⛔ 停止開放';
+          toggleBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-700 hover:bg-rose-600 text-white transition';
+        } else {
+          badge.textContent = '⛔ 已停止開放';
+          badge.className = 'font-bold text-rose-400';
+          toggleBtn.textContent = '🟢 開放加入';
+          toggleBtn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition';
+        }
+      }
+      if (passInput && document.activeElement !== passInput) {
+        passInput.value = eventAccessConfig.passcode || '';
+      }
+
+      const closedBanner = document.getElementById('enrollmentClosedBanner');
+      const passWrapper = document.getElementById('eventPasscodeInputWrapper');
+      const startBtn = document.getElementById('btnStartSystem');
+
+      if (closedBanner) {
+        closedBanner.classList.toggle('hidden', eventAccessConfig.allowJoin);
+      }
+      if (passWrapper) {
+        const hasPass = !!(eventAccessConfig.passcode && eventAccessConfig.passcode.trim().length > 0);
+        passWrapper.classList.toggle('hidden', !hasPass);
+      }
+      if (startBtn) {
+        if (!currentUser) {
+          startBtn.disabled = true;
+        } else if (selectedRole === 'rider' && !isSystemStarted) {
+          startBtn.disabled = !eventAccessConfig.allowJoin;
+        } else {
+          startBtn.disabled = false;
+        }
+      }
+    }
+
+    async function toggleEventEnrollment() {
+      if (selectedRole !== 'dispatch') return;
+      const nextAllow = !eventAccessConfig.allowJoin;
+      await db.ref(`${DB_ROOT}/eventAccess/allowJoin`).set(nextAllow);
+      alert(nextAllow ? '✅ 已恢復「開放加入」' : '⛔ 已設定為「停止開放加入」（已在線單位不受影響）');
+    }
+
+    async function saveEventPasscode() {
+      if (selectedRole !== 'dispatch') return;
+      const raw = document.getElementById('adminEventPasscodeInput').value.trim();
+      const nextVer = (eventAccessConfig.passcodeVersion || 0) + 1;
+      await db.ref(`${DB_ROOT}/eventAccess`).update({
+        passcode: raw,
+        passcodeVersion: nextVer,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      localStorage.removeItem('ems_verified_pass_ver');
+      alert(raw
+        ? `✅ 已更新本場賽事密碼（版本 v${nextVer}），所有人員需輸入新密碼才可進入！`
+        : '✅ 已清除賽事密碼，目前改為免賽事密碼即可進入。');
+    }
+
+    async function clearEventPasscode() {
+      if (selectedRole !== 'dispatch') return;
+      document.getElementById('adminEventPasscodeInput').value = '';
+      await saveEventPasscode();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -1249,6 +1376,7 @@ function populateCallsignDropdown() {
         startBtn.className = 'w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold text-white text-base shadow-lg transition';
         setTimeout(() => document.getElementById('inputAdminPin').focus(), 100);
       }
+      syncAccessConfigUI();
     }
 
     async function reopenSetup() {
@@ -1263,6 +1391,8 @@ function populateCallsignDropdown() {
       isSystemStarted = false;
       populateCallsignDropdown();
       document.getElementById('inputAdminPin').value = '';
+      document.getElementById('inputEventPasscode').value = '';
+      syncAccessConfigUI();
       document.getElementById('setupModal').classList.remove('hidden');
     }
 
@@ -1273,10 +1403,28 @@ function populateCallsignDropdown() {
       let person = '';
 
       if (selectedRole === 'rider') {
+        if (!eventAccessConfig.allowJoin) {
+          alert('⛔ 目前救護總站已「停止開放加入」，暫時無法登入或加入系統！');
+          return;
+        }
+
+        const requiredPass = (eventAccessConfig.passcode || '').trim();
+        if (requiredPass.length > 0) {
+          const verifiedVer = Number(localStorage.getItem('ems_verified_pass_ver') || '0');
+          const enteredPass = (document.getElementById('inputEventPasscode').value || '').trim();
+          if (verifiedVer !== eventAccessConfig.passcodeVersion && enteredPass !== requiredPass) {
+            alert('❌ 本場賽事密碼錯誤，請向救護總站確認當場賽事密碼！');
+            document.getElementById('inputEventPasscode').value = '';
+            document.getElementById('inputEventPasscode').focus();
+            return;
+          }
+          localStorage.setItem('ems_verified_pass_ver', String(eventAccessConfig.passcodeVersion || 0));
+        }
+
         const selEl = document.getElementById('selectVehicleCallsign');
         callsign = selEl.value;
         if (!callsign) {
-          alert('❌ 目前所有車號均已被佔用，請先確認是否有重複登入！');
+          alert('❌ 目前所有車號/站點均已被佔用，請先確認是否有重複登入！');
           return;
         }
 
@@ -1285,7 +1433,7 @@ function populateCallsignDropdown() {
         const occupiedSet = getOccupiedCallsignsSet();
         if (occupiedSet.has(callsign)) {
           populateCallsignDropdown();
-          alert(`🚫 「${callsign}」目前已被其他執勤人員登入使用中，請改選其他空閒車號！`);
+          alert(`🚫 「${callsign}」目前已被其他執勤人員登入使用中，請改選其他空閒項目！`);
           return;
         }
 
@@ -1295,7 +1443,7 @@ function populateCallsignDropdown() {
         localStorage.setItem('ems_callsign', callsign);
         localStorage.setItem('ems_person_name', person);
 
-vehicleType = callsign.startsWith('救護車')
+        vehicleType = callsign.startsWith('救護車')
           ? 'AMBULANCE'
           : (callsign.includes('救護站') ? 'STATION' : 'MOTO');
         unitName = person ? `${callsign} (${person})` : callsign;
@@ -1329,10 +1477,14 @@ vehicleType = callsign.startsWith('救護車')
       listenToCases();
 
       if (selectedRole === 'rider') {
-        roleBadge.textContent = vehicleType === 'AMBULANCE' ? '🚑 救護車' : '🏍️ 機巡組';
+        roleBadge.textContent = vehicleType === 'AMBULANCE'
+          ? '🚑 救護車'
+          : (vehicleType === 'STATION' ? '🏥 救護站' : '🏍️ 機巡組');
         roleBadge.className = vehicleType === 'AMBULANCE'
           ? 'px-2.5 py-1 rounded-md text-xs font-bold bg-rose-600 text-white shrink-0'
-          : 'px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0';
+          : (vehicleType === 'STATION'
+              ? 'px-2.5 py-1 rounded-md text-xs font-bold bg-teal-600 text-white shrink-0'
+              : 'px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0');
         document.getElementById('btnTestAlert').classList.remove('hidden');
         document.getElementById('riderControlPanel').classList.remove('hidden');
         document.getElementById('dispatchDashboard').classList.add('hidden');
@@ -1381,6 +1533,7 @@ vehicleType = callsign.startsWith('救護車')
         document.getElementById('btnTestAlert').classList.add('hidden');
         document.getElementById('riderControlPanel').classList.add('hidden');
         document.getElementById('dispatchDashboard').classList.remove('hidden');
+        syncAccessConfigUI();
 
         if (currentUser) {
           db.ref(`${DB_ROOT}/units/${currentUser.uid}`).remove();
@@ -1395,7 +1548,7 @@ vehicleType = callsign.startsWith('救護車')
         const resetTs = snap.val();
         if (!resetTs || !isSystemStarted || selectedRole !== 'rider') return;
         if (resetTs > sessionEnteredAt) {
-          forceLocalRiderLogout('🏁 本場賽事已結束，總站已清空系統資料並將所有車輛登出，感謝您的辛勞！');
+          forceLocalRiderLogout('🏁 本場賽事已結束，總站已清空系統資料並將所有單位登出，感謝您的辛勞！');
         }
       });
 
@@ -1404,7 +1557,7 @@ vehicleType = callsign.startsWith('救護車')
           const kickTs = snap.val();
           if (!kickTs || !isSystemStarted || selectedRole !== 'rider') return;
           if (kickTs > sessionEnteredAt) {
-            forceLocalRiderLogout('⚠️ 您已被救護總站管理員登出（車號已釋放），如需繼續執勤請重新選擇車號登入。');
+            forceLocalRiderLogout('⚠️ 您已被救護總站管理員登出（車號/站點已釋放），如需繼續執勤請重新選擇登入。');
           }
         });
       }
@@ -1743,7 +1896,7 @@ vehicleType = callsign.startsWith('救護車')
       );
 
       map.flyTo([lat, lng], 17);
-      alert(`✅ 已將您目前的位置設為案件 ${c.caseCode} 的精準事故點，總站與支援車輛地圖已同步更新！`);
+      alert(`✅ 已將您目前的位置設為案件 ${c.caseCode} 的精準事故點，總站與支援單位地圖已同步更新！`);
     }
 
     function updateRiderActiveCaseBanner() {
@@ -1796,7 +1949,7 @@ vehicleType = callsign.startsWith('救護車')
       const units = Object.values(allUnitsData).filter(u => !u.isOffline);
 
       if (units.length === 0) {
-        alert('目前線上沒有機巡或救護車可供派遣！');
+        alert('目前線上沒有機巡、救護車或救護站可供派遣！');
         return;
       }
 
@@ -1815,11 +1968,11 @@ vehicleType = callsign.startsWith('救護車')
         const reopenHint = c.status === 'CLOSED' ? '（此案目前為已結案狀態，確認同案派遣後將自動重啟為進行中）' : '';
         if (isRepeatSameCaseDispatch) {
           titleEl.textContent = `🔁 同案派遣 · 案件 ${c.caseCode}`;
-          noticeEl.textContent = `針對同一案件 ${c.caseCode}（${c.summary}）再次派遣車輛或指定/更新後送醫院/總站。${reopenHint}`;
+          noticeEl.textContent = `針對同一案件 ${c.caseCode}（${c.summary}）再次派遣單位或指定/更新後送醫院/總站。${reopenHint}`;
           sendBtn.textContent = `🔁 確認同案派遣（${c.caseCode}）`;
         } else {
           titleEl.textContent = `➕ 增派支援至案件 ${c.caseCode}`;
-          noticeEl.textContent = `將把選取車輛加入案件 ${c.caseCode}（${c.summary}），並沿用該案座標與時間軸。`;
+          noticeEl.textContent = `將把選取單位加入案件 ${c.caseCode}（${c.summary}），並沿用該案座標與時間軸。`;
           sendBtn.textContent = `🚨 確認增派至 ${c.caseCode}`;
         }
         noticeEl.classList.remove('hidden');
@@ -2142,7 +2295,7 @@ vehicleType = callsign.startsWith('救護車')
       if (!targetUid) return;
 
       const targetUnit = allUnitsData[targetUid];
-      const targetName = targetUnit ? targetUnit.name : '指定車輛';
+      const targetName = targetUnit ? targetUnit.name : '指定單位';
       const targetDevCode = targetUnit ? (targetUnit.deviceCode || targetUid.slice(0, 6)) : targetUid.slice(0, 6);
       const dispatchId = `disp_${Date.now()}`;
 
@@ -2188,7 +2341,7 @@ vehicleType = callsign.startsWith('救護車')
             ? (existingCase.status === 'CLOSED'
                 ? `🔁 已結案重啟並同案派遣：${targetName}`
                 : `🔁 同案再次派遣：${targetName}`)
-            : `➕ 增派支援車輛：${targetName}`;
+            : `➕ 增派支援單位：${targetName}`;
           await appendCaseTimeline(finalCaseId, '🛡️ 救護總站', timelineAction, finalMsg);
         } else {
           if (!msg && !selectedDispatchCoords && !transportDest) {
@@ -2240,7 +2393,6 @@ vehicleType = callsign.startsWith('救護車')
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
 
-        // 25 秒內未確認派遣回執則標記逾時警示並寫入案件時間軸
         const trackedDispatchId = dispatchId;
         const trackedCaseId = finalCaseId;
         const trackedTargetUid = targetUid;
@@ -2509,7 +2661,7 @@ vehicleType = callsign.startsWith('救護車')
     }
 
     // =========================================================================
-    // 14. 監聽全隊車輛與所有案件（地圖渲染 + 管理員看板）
+    // 14. 監聽全隊單位與所有案件（地圖渲染 + 管理員看板）
     // =========================================================================
     function listenToUnits() {
       db.ref(`${DB_ROOT}/units`).on('value', (snapshot) => {
@@ -2560,7 +2712,7 @@ vehicleType = callsign.startsWith('救護車')
         const meta = STATUS_META[unit.status] || STATUS_META.STANDBY;
         const badgeColorClass = unit.isOffline ? 'status-offline' : meta.class;
         const timeStr = unit.updatedAt ? formatTime(unit.updatedAt) : '--:--';
-const isAmb = unit.vehicleType === 'AMBULANCE';
+        const isAmb = unit.vehicleType === 'AMBULANCE';
         const isStation = unit.vehicleType === 'STATION';
         const vehIcon = isAmb ? '🚑' : (isStation ? '🏥' : '🏍️');
         const dotExtraClass = isAmb ? 'ems-marker-ambulance' : '';
@@ -2581,7 +2733,7 @@ const isAmb = unit.vehicleType === 'AMBULANCE';
         const adminBtnHtml = selectedRole === 'dispatch'
           ? `<button onclick="openAdminDispatchModal('${unit.uid}', false, '', false, '')"
               style="margin-top:6px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
-              📢 立案派遣此車輛
+              📢 立案派遣此單位
              </button>`
           : '';
 
@@ -2739,7 +2891,6 @@ const isAmb = unit.vehicleType === 'AMBULANCE';
         const isMerged = c.status === 'MERGED';
         const unitsList = c.assignedUnits ? Object.values(c.assignedUnits).join('、') : '未指派';
 
-        // 檢視該案件指派車輛的派遣確認 / 逾時未回狀態
         const assignedEntries = c.assignedUnits ? Object.entries(c.assignedUnits) : [];
         const dispatchBadges = [];
         assignedEntries.forEach(([uid, uName]) => {
@@ -2942,7 +3093,7 @@ const isAmb = unit.vehicleType === 'AMBULANCE';
       document.getElementById('onlineCount').textContent = units.length;
 
       if (units.length === 0) {
-        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無一般用戶（機巡/救護車）上線...</div>';
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無一般用戶（機巡/救護車/救護站）上線...</div>';
         return;
       }
 
@@ -2958,7 +3109,7 @@ const isAmb = unit.vehicleType === 'AMBULANCE';
         const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
         const secAgo = u.updatedAt ? Math.max(0, Math.floor((Date.now() - u.updatedAt) / 1000)) : 999;
         const isStale = secAgo > 60 || u.isOffline;
-const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STATION' ? '🏥' : '🏍️');
+        const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STATION' ? '🏥' : '🏍️');
         const caseCode = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId].caseCode : '';
 
         const disp = allDispatchesData[u.uid];
@@ -2994,7 +3145,7 @@ const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STA
                   class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
                   📢 派案
                 </button>
-                <button onclick="adminKickUnit('${u.uid}')" title="強制登出並釋放此車號"
+                <button onclick="adminKickUnit('${u.uid}')" title="強制登出並釋放此車號/站點"
                   class="px-2 py-1 rounded-lg text-xs font-bold bg-rose-900/80 hover:bg-rose-700 text-rose-200 border border-rose-600/50">
                   👢 踢除
                 </button>
@@ -3021,14 +3172,14 @@ const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STA
           unitMarkers[uid].openPopup();
         }
       } else {
-        alert('該車輛尚未回傳有效 GPS 座標');
+        alert('該單位尚未回傳有效 GPS 座標');
       }
     }
 
     async function adminKickUnit(uid) {
       const unit = allUnitsData[uid];
       if (!unit) return;
-      if (!confirm(`確定要強制踢除「${unit.name}」並釋放該車號嗎？\n（對方手機將會自動登出並停止定位）`)) return;
+      if (!confirm(`確定要強制踢除「${unit.name}」並釋放該項目嗎？\n（對方手機將會自動登出並停止定位）`)) return;
 
       await db.ref(`${DB_ROOT}/systemControl/kickedUids/${uid}`).set(firebase.database.ServerValue.TIMESTAMP);
       await db.ref(`${DB_ROOT}/units/${uid}`).remove();
@@ -3098,7 +3249,7 @@ const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STA
       }
 
       const alsoPois = document.getElementById('chkAlsoClearPois').checked;
-      if (!confirm('最後確認：確定已匯出報表，並要立即清空所有案件、車輛定位且強制所有線上人員登出嗎？')) {
+      if (!confirm('最後確認：確定已匯出報表，並要立即清空所有案件、單位定位且強制所有線上人員登出嗎？')) {
         return;
       }
 
@@ -3115,7 +3266,7 @@ const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STA
 
       removeAdminDraftPin();
       closeEndEventModal();
-      alert('✅ 已完成賽後資料清空，所有前線車輛皆已自動登出！');
+      alert('✅ 已完成賽後資料清空，所有前線單位皆已自動登出！');
     }
 
     function formatTime(ts) {
