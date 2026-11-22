@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0f172a" />
   <title>心動力救護派遣系統</title>
 
   <!-- Leaflet CSS -->
@@ -325,7 +328,7 @@
           </button>
         </div>
 
-<!-- 進行中任務輔助按鈕：補標事故定位點 / 結案恢復待命 -->
+        <!-- 進行中任務輔助按鈕：標定目前位置為事故點 / 結案恢復待命 -->
         <div id="riderActiveActionsRow" class="hidden grid grid-cols-2 gap-2.5 mt-2.5">
           <button type="button" onclick="pinCurrentLocationToActiveCase()"
             class="py-2.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow transition">
@@ -751,7 +754,6 @@
 
     const DB_ROOT = 'marathon_ems_tracker';
     const ADMIN_PASSWORD = '8868';
-    // 超過 2 分鐘未更新心跳視為離線，釋放車號避免死鎖
     const STALE_UNIT_MS = 120000;
 
     // =========================================================================
@@ -802,6 +804,7 @@
     let allUnitsData = {};
     let allCasesData = {};
     let allPoisData = {};
+    let allDispatchesData = {};
     let caseFilterMode = 'ACTIVE';
 
     const STATUS_META = {
@@ -824,13 +827,12 @@
       STANDBY:    ['處置完畢選手續跑', '已交接救護車後送', '選手棄賽已上收容車', '誤觸恢復待命']
     };
 
-    // 取得目前所有「已被其他裝置佔用」的車號集合
     function getOccupiedCallsignsSet() {
       const now = Date.now();
       const occupied = new Set();
       Object.values(allUnitsData).forEach(u => {
         if (!u || !u.callsign) return;
-        if (currentUser && u.uid === currentUser.uid) return; // 自己原本的裝置不鎖
+        if (currentUser && u.uid === currentUser.uid) return;
         const isAlive = !u.isOffline && (!u.updatedAt || (now - u.updatedAt) < STALE_UNIT_MS);
         if (isAlive) {
           occupied.add(u.callsign);
@@ -854,7 +856,6 @@
       for (let i = 1; i <= 15; i++) allCodes.push(`機巡${String(i).padStart(2, '0')}`);
       for (let i = 91; i <= 95; i++) allCodes.push(`救護車${i}`);
 
-      // 若預設或目前選中的車號已被別人佔用，自動改選第一個未被佔用的車號
       let targetSelect = sel.value || savedCallsign;
       if (occupiedSet.has(targetSelect)) {
         const firstFree = allCodes.find(code => !occupiedSet.has(code));
@@ -899,27 +900,31 @@
     function playSingleAlarmBurst() {
       try {
         unlockAudioEngine();
-        if (!audioCtx) return;
-        const now = audioCtx.currentTime;
-        const freqs = [880, 660, 880, 660];
-        freqs.forEach((freq, idx) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(freq, now + idx * 0.18);
-          gain.gain.setValueAtTime(0.001, now + idx * 0.18);
-          gain.gain.exponentialRampToValueAtTime(0.35, now + idx * 0.18 + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + (idx + 1) * 0.18 - 0.01);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start(now + idx * 0.18);
-          osc.stop(now + (idx + 1) * 0.18);
-        });
+        if (audioCtx) {
+          const now = audioCtx.currentTime;
+          const freqs = [980, 740, 980, 740, 980];
+          freqs.forEach((freq, idx) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.16);
+            gain.gain.setValueAtTime(0.001, now + idx * 0.16);
+            gain.gain.exponentialRampToValueAtTime(0.6, now + idx * 0.16 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (idx + 1) * 0.16 - 0.01);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now + idx * 0.16);
+            osc.stop(now + (idx + 1) * 0.16);
+          });
+        }
       } catch (e) {}
 
-      if ('vibrate' in navigator) {
-        navigator.vibrate([400, 150, 400, 150, 600]);
-      }
+      try {
+        if (typeof navigator.vibrate === 'function') {
+          navigator.vibrate(0);
+          navigator.vibrate([500, 120, 500, 120, 700]);
+        }
+      } catch (e) {}
     }
 
     function startContinuousAlarm() {
@@ -933,7 +938,9 @@
         clearInterval(alertRepeatTimer);
         alertRepeatTimer = null;
       }
-      if ('vibrate' in navigator) navigator.vibrate(0);
+      try {
+        if (typeof navigator.vibrate === 'function') navigator.vibrate(0);
+      } catch (e) {}
     }
 
     function testAlertSound() {
@@ -1081,7 +1088,7 @@
     });
 
     // =========================================================================
-    // 7. Firebase 初始化與身份登入（含即時防撞號驗證）
+    // 7. Firebase 初始化與身份登入（含即時防撞號驗證與重連派遣恢復）
     // =========================================================================
     function initFirebase() {
       const banner = document.getElementById('authStatusBanner');
@@ -1099,6 +1106,7 @@
 
             listenToUnits();
             listenToPois();
+            listenToDispatches();
           })
           .catch((error) => {
             banner.className = 'text-xs text-red-400 bg-red-950/50 border border-red-800/60 rounded-lg px-3 py-2';
@@ -1145,7 +1153,6 @@
     async function reopenSetup() {
       stopContinuousAlarm();
       cancelMapPickMode();
-      // 若原本為一般用戶切換身份，先將原車號標記為離線釋放給別人
       if (selectedRole === 'rider' && currentUser && isSystemStarted) {
         await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({
           isOffline: true,
@@ -1172,7 +1179,6 @@
           return;
         }
 
-        // 即時向雲端二次確認該車號是否剛被其他手機搶先佔用
         const unitsSnap = await db.ref(`${DB_ROOT}/units`).once('value');
         allUnitsData = unitsSnap.val() || {};
         const occupiedSet = getOccupiedCallsignsSet();
@@ -1229,7 +1235,7 @@
           currentStatus = existing.status;
           activeCaseId = existing.activeCaseId || null;
           syncLocalRiderUI(currentStatus, existing.lastNote || '', existing.lastActionTime || Date.now());
-          db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({
+          await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({
             deviceCode: getShortDeviceCode(),
             callsign: callsign,
             personName: person,
@@ -1242,7 +1248,7 @@
           currentStatus = 'STANDBY';
           activeCaseId = null;
           syncLocalRiderUI('STANDBY', '上線待命', Date.now());
-          db.ref(`${DB_ROOT}/units/${currentUser.uid}`).set({
+          await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).set({
             uid: currentUser.uid,
             deviceCode: getShortDeviceCode(),
             callsign: callsign,
@@ -1274,8 +1280,7 @@
 
       setTimeout(() => map.invalidateSize(), 250);
     }
-    
-// 監聽總站賽後「強制全隊登出清空」與「單車踢除」廣播訊號
+
     function listenToSessionResetSignal() {
       db.ref(`${DB_ROOT}/systemControl/lastResetAt`).on('value', (snap) => {
         const resetTs = snap.val();
@@ -1410,7 +1415,7 @@
     }
 
     // =========================================================================
-    // 10. 一般用戶：狀態回報（自動建立或更新所屬案件時間軸 + 綁定裝置碼）
+    // 10. 一般用戶：狀態回報、補標事故點與案件時間軸更新
     // =========================================================================
     function openReportModal(targetStatus) {
       pendingActionStatus = targetStatus;
@@ -1562,7 +1567,7 @@
       document.getElementById('riderLastNote').textContent = note ? `(${note})` : '';
       document.getElementById('riderLastTime').textContent = formatTime(timestampMs);
 
-    const activeRow = document.getElementById('riderActiveActionsRow');
+      const activeRow = document.getElementById('riderActiveActionsRow');
       if (status === 'DISPATCHED' || status === 'ARRIVED') {
         activeRow.classList.remove('hidden');
       } else {
@@ -1571,7 +1576,8 @@
 
       updateRiderActiveCaseBanner();
     }
-async function pinCurrentLocationToActiveCase() {
+
+    async function pinCurrentLocationToActiveCase() {
       if (!myCoords) {
         alert('⚠️ 尚未取得您目前的 GPS 座標，請稍候再試！');
         return;
@@ -1601,7 +1607,7 @@ async function pinCurrentLocationToActiveCase() {
       map.flyTo([lat, lng], 17);
       alert(`✅ 已將您目前的位置設為案件 ${c.caseCode} 的精準事故點，總站與支援車輛地圖已同步更新！`);
     }
-    
+
     function updateRiderActiveCaseBanner() {
       const banner = document.getElementById('riderActiveCaseBanner');
       const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
@@ -1637,7 +1643,7 @@ async function pinCurrentLocationToActiveCase() {
     }
 
     // =========================================================================
-    // 11. 管理員派案 & 既有案件增派支援 & 無線電代記補述
+    // 11. 管理員派案、逾時追蹤、支援增派 & 無線電代記補述
     // =========================================================================
     function openAdminDispatchModal(preselectUid, keepExistingPin, existingCaseId) {
       const selectEl = document.getElementById('dispatchTargetSelect');
@@ -1687,7 +1693,6 @@ async function pinCurrentLocationToActiveCase() {
       removeAdminDraftPin();
     }
 
-    // --- 無線電代記補述功能 ---
     function openRadioNoteModal(caseId) {
       const c = allCasesData[caseId];
       if (!c) return;
@@ -1744,7 +1749,6 @@ async function pinCurrentLocationToActiveCase() {
         return;
       }
 
-      // 紀錄操作者為管理員裝置碼並標明無線電代記
       const adminAuditCode = `總站代記-${getShortDeviceCode()}`;
       await appendCaseTimeline(radioTargetCaseId, reporterName, actionLabel, noteText, adminAuditCode);
 
@@ -1893,8 +1897,30 @@ async function pinCurrentLocationToActiveCase() {
           targetLat: targetLat,
           targetLng: targetLng,
           acknowledged: false,
+          deliveryWarning: false,
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
+
+        // 25 秒內未確認派遣回執則標記逾時警示並寫入案件時間軸
+        const trackedDispatchId = dispatchId;
+        const trackedCaseId = finalCaseId;
+        const trackedTargetUid = targetUid;
+        const trackedTargetName = targetName;
+        setTimeout(async () => {
+          try {
+            const snap = await db.ref(`${DB_ROOT}/dispatches/${trackedTargetUid}`).once('value');
+            const latest = snap.val();
+            if (latest && latest.dispatchId === trackedDispatchId && !latest.acknowledged) {
+              await db.ref(`${DB_ROOT}/dispatches/${trackedTargetUid}/deliveryWarning`).set(true);
+              await appendCaseTimeline(
+                trackedCaseId,
+                '🛡️ 系統追蹤',
+                `⚠️ 派遣逾時未確認（${trackedTargetName}）`,
+                '25秒內未收到前線確認回執，可能處於鎖屏、背景或網路中斷，建議改派或無線電呼叫'
+              );
+            }
+          } catch (e) {}
+        }, 25000);
 
         closeAdminDispatchModal();
         alert(`✅ 已發送派遣警報給「${targetName}」（案件編號 ${finalCaseCode}）！`);
@@ -1906,22 +1932,28 @@ async function pinCurrentLocationToActiveCase() {
     }
 
     // =========================================================================
-    // 12. 一般用戶端：接收總站派遣警報與確認
+    // 12. 派遣監聽：管理員紅燈未確認追蹤 & 一般用戶斷線重登恢復派遣
     // =========================================================================
+    function listenToDispatches() {
+      db.ref(`${DB_ROOT}/dispatches`).on('value', (snapshot) => {
+        allDispatchesData = snapshot.val() || {};
+        if (selectedRole === 'dispatch') renderDispatchUnitList();
+      });
+    }
+
     function listenToMyDispatches() {
       if (!currentUser) return;
       db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).on('value', (snapshot) => {
         const data = snapshot.val();
         if (!data || data.acknowledged) return;
-        if (data.dispatchId === lastHandledDispatchId) return;
-
+        // 即使誤關網頁重新登入，只要該派遣尚未確認就顯示（同一 dispatchId 若未確認亦保留彈窗能力）
         latestDispatchObj = data;
         const hasCoords = typeof data.targetLat === 'number' && typeof data.targetLng === 'number';
 
         document.getElementById('incomingCaseCode').textContent = data.caseCode || '#NEW';
         document.getElementById('incomingDispatchMessage').textContent = data.message;
         document.getElementById('incomingDispatchTime').textContent =
-          `總站於 ${data.timestamp ? formatTime(data.timestamp) : '剛剛'} 發出派遣`;
+          `總站於 ${data.timestamp ? formatTime(data.timestamp) : '先前'} 發出派遣${data.dispatchId === lastHandledDispatchId ? '（尚未確認）' : ''}`;
 
         document.getElementById('incomingDispatchCoordsBadge').classList.toggle('hidden', !hasCoords);
         document.getElementById('btnIncomingNav').classList.toggle('hidden', !hasCoords);
@@ -1946,6 +1978,7 @@ async function pinCurrentLocationToActiveCase() {
 
       await db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).update({
         acknowledged: true,
+        deliveryWarning: false,
         acknowledgedAt: firebase.database.ServerValue.TIMESTAMP
       });
 
@@ -2258,7 +2291,7 @@ async function pinCurrentLocationToActiveCase() {
                </button>
              </div>`
           : `<a href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}&travelmode=two-wheeler" target="_blank"
-              style="display:block; text-align:center; margin-top:6px; padding:5px 8px; background:#2563eb; color:#fff; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none;">
+              style="display:block; text-align:center; margin-top:6px; padding:5px 8px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none;">
               🧭 開啟 Google 導航至此點
              </a>`;
 
@@ -2287,7 +2320,7 @@ async function pinCurrentLocationToActiveCase() {
     }
 
     // =========================================================================
-    // 15. 管理員看板分頁渲染 & 賽後結算清空精靈（含裝置碼稽核 CSV）
+    // 15. 管理員看板分頁渲染、踢除釋放 & 賽後結算清空精靈
     // =========================================================================
     function switchDispatchTab(tab) {
       const tabs = { cases: 'tabCases', units: 'tabUnits', pois: 'tabPois' };
@@ -2340,7 +2373,6 @@ async function pinCurrentLocationToActiveCase() {
           ? Object.values(c.timeline).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
           : [];
 
-        // 前台時間軸保持乾淨不顯示裝置碼，保留於後台 CSV 稽核
         const timelineHtml = timelineItems.map(item => `
           <div class="flex items-start gap-2 text-[11px] py-1 border-l-2 ${isActive ? 'border-red-500/70' : 'border-slate-600'} pl-2.5 ml-1">
             <span class="text-slate-400 font-mono shrink-0">${item.timestamp ? formatTime(item.timestamp) : '--:--'}</span>
@@ -2371,7 +2403,6 @@ async function pinCurrentLocationToActiveCase() {
               <span class="text-[11px] ${isActive ? 'text-red-400 font-bold' : 'text-emerald-400'}">${isActive ? '● 處理中' : '✓ 已結案'}</span>
             </div>
 
-            <!-- 案件獨立時間軸 -->
             <div class="bg-slate-900/80 rounded-lg p-2 space-y-0.5 mb-2">
               ${timelineHtml || '<div class="text-[11px] text-slate-500">無時間軸明細</div>'}
             </div>
@@ -2404,7 +2435,7 @@ async function pinCurrentLocationToActiveCase() {
       }).join('');
     }
 
-function focusCaseOnMap(caseId) {
+    function focusCaseOnMap(caseId) {
       const c = allCasesData[caseId];
       if (!c || typeof c.lat !== 'number' || typeof c.lng !== 'number') return;
 
@@ -2481,7 +2512,12 @@ function focusCaseOnMap(caseId) {
       }
 
       const priority = { DISPATCHED: 1, ARRIVED: 2, STANDBY: 3 };
-      units.sort((a, b) => (priority[a.status] || 9) - (priority[b.status] || 9));
+      units.sort((a, b) => {
+        const aUnacked = !!(allDispatchesData[a.uid] && !allDispatchesData[a.uid].acknowledged);
+        const bUnacked = !!(allDispatchesData[b.uid] && !allDispatchesData[b.uid].acknowledged);
+        if (aUnacked !== bUnacked) return aUnacked ? -1 : 1;
+        return (priority[a.status] || 9) - (priority[b.status] || 9);
+      });
 
       container.innerHTML = units.map(u => {
         const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
@@ -2490,22 +2526,47 @@ function focusCaseOnMap(caseId) {
         const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : '🏍️';
         const caseCode = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId].caseCode : '';
 
+        const disp = allDispatchesData[u.uid];
+        const hasUnackedDispatch = !!(disp && !disp.acknowledged);
+        const isOverdue = !!(hasUnackedDispatch && disp.deliveryWarning);
+
+        const cardBorderClass = hasUnackedDispatch
+          ? 'border-red-500 bg-red-950/25 shadow-lg shadow-red-950/40'
+          : (u.status === 'DISPATCHED' ? 'border-red-500/70' : 'border-slate-700');
+
+        const unackedBadgeHtml = hasUnackedDispatch
+          ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-black bg-red-600 text-yellow-200 animate-pulse shrink-0">
+               ${isOverdue ? '🔴 逾時未確認' : '🔴 未確認派遣'}
+             </span>`
+          : '';
+
+        const notePrefix = hasUnackedDispatch
+          ? `<span class="text-red-300 font-bold">🚨 待確認派遣 (${escapeHtml(disp.caseCode || '')})：</span>`
+          : '📝 ';
+
         return `
-          <div class="p-3 rounded-xl bg-slate-800/90 border ${u.status === 'DISPATCHED' ? 'border-red-500/70' : 'border-slate-700'} transition">
+          <div class="p-3 rounded-xl bg-slate-800/90 border ${cardBorderClass} transition">
             <div class="flex items-center justify-between mb-1.5 gap-2">
-              <div onclick="focusUnit('${u.uid}')" class="flex items-center gap-1.5 min-w-0 cursor-pointer flex-1">
+              <div onclick="focusUnit('${u.uid}')" class="flex items-center flex-wrap gap-1.5 min-w-0 cursor-pointer flex-1">
                 <span class="font-bold text-white text-sm truncate hover:underline">${vehIcon} ${escapeHtml(u.name)}</span>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${meta.class}">
                   ${meta.short} ${caseCode}
                 </span>
+                ${unackedBadgeHtml}
               </div>
-              <button onclick="openAdminDispatchModal('${u.uid}', false, '')"
-                class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shrink-0 shadow">
-                📢 派案
-              </button>
+              <div class="flex items-center gap-1 shrink-0">
+                <button onclick="openAdminDispatchModal('${u.uid}', false, '')"
+                  class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
+                  📢 派案
+                </button>
+                <button onclick="adminKickUnit('${u.uid}')" title="強制登出並釋放此車號"
+                  class="px-2 py-1 rounded-lg text-xs font-bold bg-rose-900/80 hover:bg-rose-700 text-rose-200 border border-rose-600/50">
+                  👢 踢除
+                </button>
+              </div>
             </div>
             <div onclick="focusUnit('${u.uid}')" class="cursor-pointer text-xs text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
-              <span class="truncate">📝 ${escapeHtml(u.lastNote || '待命巡邏中')}</span>
+              <span class="truncate">${notePrefix}${escapeHtml(hasUnackedDispatch ? disp.message : (u.lastNote || '待命巡邏中'))}</span>
               <span class="text-[11px] shrink-0 font-mono ${isStale ? 'text-amber-400 font-bold' : 'text-slate-400'}">
                 ${secAgo}s前
               </span>
@@ -2527,6 +2588,15 @@ function focusCaseOnMap(caseId) {
       } else {
         alert('該車輛尚未回傳有效 GPS 座標');
       }
+    }
+
+    async function adminKickUnit(uid) {
+      const unit = allUnitsData[uid];
+      if (!unit) return;
+      if (!confirm(`確定要強制踢除「${unit.name}」並釋放該車號嗎？\n（對方手機將會自動登出並停止定位）`)) return;
+
+      await db.ref(`${DB_ROOT}/systemControl/kickedUids/${uid}`).set(firebase.database.ServerValue.TIMESTAMP);
+      await db.ref(`${DB_ROOT}/units/${uid}`).remove();
     }
 
     // --- 賽後結算精靈（匯出報表 + 強制人員登出並清空資料） ---
