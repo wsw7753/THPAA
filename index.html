@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>馬拉松機動救護隊｜即時定位與勤務回報系統</title>
+  <title>馬拉松機動救護隊｜即時定位與勤務派遣系統</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -13,7 +13,7 @@
   <style>
     html, body {
       height: 100%;
-      height: 100dvh; /* 修正手機瀏覽器網址列遮擋問題 */
+      height: 100dvh;
       margin: 0;
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
@@ -69,6 +69,14 @@
       100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
 
+    @keyframes alert-border {
+      0%, 100% { border-color: #ef4444; box-shadow: 0 0 25px rgba(239, 68, 68, 0.7); }
+      50% { border-color: #facc15; box-shadow: 0 0 35px rgba(250, 204, 21, 0.8); }
+    }
+    .urgent-dispatch-box {
+      animation: alert-border 0.9s infinite;
+    }
+
     /* 自訂捲軸 */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #1e293b; }
@@ -84,33 +92,42 @@
         <span class="text-3xl">🚑</span>
         <div>
           <h1 class="text-xl font-bold text-white">馬拉松機動救護追蹤系統</h1>
-          <p class="text-xs text-slate-400">即時定位與勤務派遣回報平台</p>
+          <p class="text-xs text-slate-400">即時定位、勤務回報與總站派遣平台</p>
         </div>
       </div>
 
       <div class="mt-5 space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-slate-300 mb-2">1. 請選擇您的執勤身分：</label>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">1. 請選擇您的使用身分：</label>
           <div class="grid grid-cols-2 gap-3">
             <button type="button" id="btnSelectRider" onclick="selectRole('rider')"
               class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
               <div class="text-2xl mb-1">🏍️</div>
-              <div class="font-bold text-white">機車救護組</div>
-              <div class="text-xs text-slate-300 mt-0.5">前線定位與出勤回報</div>
+              <div class="font-bold text-white">一般用戶</div>
+              <div class="text-xs text-slate-300 mt-0.5">機車救護組（定位/回報/接單）</div>
             </button>
             <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
               class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
-              <div class="text-2xl mb-1">🖥️</div>
-              <div class="font-bold text-white">救護總站</div>
-              <div class="text-xs text-slate-300 mt-0.5">監控全隊位置與紀錄</div>
+              <div class="text-2xl mb-1">🛡️</div>
+              <div class="font-bold text-white">管理員模式</div>
+              <div class="text-xs text-slate-300 mt-0.5">救護總站（需輸入密碼）</div>
             </button>
           </div>
         </div>
 
+        <!-- 一般用戶輸入呼號 -->
         <div id="riderInputGroup">
           <label class="block text-sm font-semibold text-slate-300 mb-1">2. 輸入呼號 / 隊員姓名：</label>
           <input type="text" id="inputUnitName" placeholder="例：機動1號 - 王小明"
             class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 text-base" />
+        </div>
+
+        <!-- 管理員模式輸入密碼 -->
+        <div id="adminPinGroup" class="hidden">
+          <label class="block text-sm font-semibold text-blue-300 mb-1">2. 輸入管理員密碼：</label>
+          <input type="password" id="inputAdminPin" inputmode="numeric" maxlength="8" placeholder="請輸入總站管理密碼"
+            onkeydown="if(event.key==='Enter') startSystem()"
+            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-blue-500/70 text-white placeholder-slate-400 focus:outline-none focus:border-blue-400 text-base tracking-widest" />
         </div>
 
         <div id="authStatusBanner" class="text-xs text-amber-400 bg-amber-950/50 border border-amber-800/60 rounded-lg px-3 py-2">
@@ -119,7 +136,7 @@
 
         <button type="button" id="btnStartSystem" onclick="startSystem()" disabled
           class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold text-white text-base shadow-lg transition">
-          進入系統
+          進入系統（同步啟用定位與提示音）
         </button>
       </div>
     </div>
@@ -129,12 +146,18 @@
   <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between z-[1000] shrink-0">
     <div class="flex items-center gap-2 min-w-0">
       <span id="headerRoleBadge" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0">
-        🏍️ 機車組
+        🏍️ 一般用戶
       </span>
       <span id="headerUnitName" class="font-bold text-sm md:text-base truncate text-white">未設定</span>
     </div>
 
     <div class="flex items-center gap-1.5 shrink-0">
+      <!-- 測試提示音與震動按鈕（一般用戶端顯示） -->
+      <button id="btnTestAlert" onclick="testAlertSound()" title="測試派遣提示音與震動"
+        class="hidden px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">
+        🔔 測音
+      </button>
+
       <!-- 螢幕恆亮狀態指示 -->
       <button id="btnWakeLock" onclick="toggleWakeLock()" title="點擊切換螢幕恆亮"
         class="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-300 flex items-center gap-1">
@@ -166,9 +189,18 @@
       🎯
     </button>
 
-    <!-- ========== A. 機車救護組專屬底部操作面板 ========== -->
+    <!-- ========== A. 一般用戶（機車救護組）專屬底部操作面板 ========== -->
     <div id="riderControlPanel" class="hidden bg-slate-900 border-t border-slate-700 p-3 pb-4 md:p-4 z-[1000] shrink-0">
       <div class="max-w-2xl mx-auto">
+        <!-- 最新總站派遣橫幅 -->
+        <div id="riderActiveTaskBanner" class="hidden bg-red-950/90 border border-red-500 rounded-xl px-3 py-2 mb-2.5 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-[11px] font-bold text-red-300">📢 總站最新派遣任務 (<span id="riderTaskTime">--:--</span>)</div>
+            <div id="riderTaskContent" class="text-xs font-bold text-white truncate"></div>
+          </div>
+          <button onclick="dismissTaskBanner()" class="text-xs px-2 py-1 rounded bg-red-900 text-red-200 shrink-0">關閉</button>
+        </div>
+
         <!-- 目前狀態與最新備註顯示 -->
         <div class="flex items-center justify-between bg-slate-800/80 rounded-xl px-3 py-2 mb-2.5 border border-slate-700">
           <div class="flex items-center gap-2 min-w-0">
@@ -196,7 +228,7 @@
           </button>
         </div>
 
-        <!-- 恢復待命按鈕（在出勤或到達狀態時顯示） -->
+        <!-- 恢復待命按鈕 -->
         <button id="btnActionStandby" onclick="openReportModal('STANDBY')"
           class="hidden w-full mt-2.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-sm transition">
           ✅ 任務結束，恢復「待命巡邏」狀態
@@ -204,8 +236,8 @@
       </div>
     </div>
 
-    <!-- ========== B. 救護總站專屬監控側邊欄 / 底部面板 ========== -->
-    <aside id="dispatchDashboard" class="hidden w-full md:w-[430px] h-[46dvh] md:h-full bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col z-[1000] shrink-0">
+    <!-- ========== B. 管理員模式（救護總站）專屬監控與派遣側邊欄 ========== -->
+    <aside id="dispatchDashboard" class="hidden w-full md:w-[440px] h-[48dvh] md:h-full bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col z-[1000] shrink-0">
       <!-- 分頁切換與匯出/清空工具 -->
       <div class="flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800 shrink-0 gap-1">
         <div class="flex gap-1">
@@ -219,9 +251,13 @@
           </button>
         </div>
         <div class="flex gap-1">
+          <button onclick="openAdminDispatchModal('')" title="指定派遣機車組"
+            class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
+            📢 派遣
+          </button>
           <button onclick="exportLogsCSV()" title="匯出 Excel CSV 紀錄表"
             class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 border border-emerald-600/50">
-            📥 匯出
+            📥
           </button>
           <button onclick="clearAllTestData()" title="清空所有測試資料"
             class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-900/80 text-slate-300 hover:text-red-200 border border-slate-700">
@@ -230,19 +266,19 @@
         </div>
       </div>
 
-      <!-- 頁籤 1：各機車組即時狀態列表 -->
+      <!-- 頁籤 1：各機車組即時狀態與一鍵派遣列表 -->
       <div id="panelUnits" class="flex-1 overflow-y-auto p-3 space-y-2.5">
-        <div class="text-center text-slate-500 text-sm py-8">目前尚無機車組上線...</div>
+        <div class="text-center text-slate-500 text-sm py-8">目前尚無一般用戶（機車組）上線...</div>
       </div>
 
-      <!-- 頁籤 2：即時勤務回報時間軸 -->
+      <!-- 頁籤 2：即時勤務回報與派遣時間軸 -->
       <div id="panelLogs" class="hidden flex-1 overflow-y-auto p-3 space-y-2">
         <div class="text-center text-slate-500 text-sm py-8">尚無勤務回報紀錄</div>
       </div>
     </aside>
   </main>
 
-  <!-- ==================== 4. 勤務回報補述對話框 (Modal) ==================== -->
+  <!-- ==================== 4. 一般用戶：勤務回報補述對話框 ==================== -->
   <div id="reportModal" class="hidden fixed inset-0 z-[2500] bg-black/80 flex items-end sm:items-center justify-center p-3">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
       <div class="flex items-center justify-between mb-3">
@@ -252,10 +288,8 @@
 
       <p class="text-xs text-slate-400 mb-3">可點擊下方快捷標籤，或直接輸入現場補充說明（非必填）：</p>
 
-      <!-- 快捷標籤區（依狀態動態切換） -->
       <div id="quickTagsContainer" class="flex flex-wrap gap-2 mb-3"></div>
 
-      <!-- 補充說明輸入框 -->
       <textarea id="reportNoteInput" rows="3" placeholder="輸入公里數、選手狀況、是否需支援救護車..."
         class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-4"></textarea>
 
@@ -272,6 +306,89 @@
     </div>
   </div>
 
+  <!-- ==================== 5. 管理員模式：指定派遣機車對話框 ==================== -->
+  <div id="adminDispatchModal" class="hidden fixed inset-0 z-[2600] bg-black/80 flex items-end sm:items-center justify-center p-3">
+    <div class="bg-slate-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-black text-amber-400">📢 管理員派遣指令</h3>
+        <button onclick="closeAdminDispatchModal()" class="text-slate-400 hover:text-white text-xl px-2">✕</button>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs font-semibold text-slate-300 mb-1">1. 選擇派遣對象（機車救護組）：</label>
+        <select id="dispatchTargetSelect"
+          class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm focus:outline-none focus:border-amber-500">
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs font-semibold text-slate-300 mb-1.5">2. 快捷任務指令：</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" onclick="appendDispatchText('選手倒地請求支援，請立即前往')"
+            class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
+            + 選手倒地支援
+          </button>
+          <button type="button" onclick="appendDispatchText('請攜帶 AED 趕赴現場')"
+            class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
+            + 攜帶 AED 趕赴
+          </button>
+          <button type="button" onclick="appendDispatchText('請前往折返點巡邏待命')"
+            class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
+            + 前往折返點
+          </button>
+          <button type="button" onclick="appendDispatchText('請回報目前位置與傷患狀況')"
+            class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
+            + 回報目前狀況
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-slate-300 mb-1">3. 任務地點 / 補充細節：</label>
+        <textarea id="adminDispatchNote" rows="3" placeholder="例：約 12.5K 處有跑者中暑暈眩，請前往評估..."
+          class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 text-sm"></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button type="button" onclick="closeAdminDispatchModal()"
+          class="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm">
+          取消
+        </button>
+        <button type="button" id="btnSendDispatch" onclick="sendAdminDispatch()"
+          class="py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm shadow-lg">
+          🚨 發送派遣警報
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 6. 一般用戶：收到總站派遣全螢幕緊急彈窗 ==================== -->
+  <div id="incomingDispatchModal" class="hidden fixed inset-0 z-[3000] bg-black/90 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-4 border-red-500 urgent-dispatch-box rounded-2xl max-w-md w-full p-6 shadow-2xl text-center">
+      <div class="text-5xl mb-2 animate-bounce">🚨</div>
+      <div class="inline-block px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black tracking-wider mb-2">
+        救護總站緊急派遣通知
+      </div>
+      <h2 class="text-xl font-black text-white mb-1" id="incomingDispatchTime">收到新任務</h2>
+
+      <div class="my-4 p-4 rounded-xl bg-red-950/60 border border-red-500/70 text-left">
+        <div class="text-xs text-red-300 mb-1">總站派遣內容：</div>
+        <div id="incomingDispatchMessage" class="text-base font-bold text-white leading-relaxed whitespace-pre-wrap"></div>
+      </div>
+
+      <div class="space-y-2.5">
+        <button type="button" onclick="acknowledgeDispatch(true)"
+          class="w-full py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-base shadow-lg">
+          🚨 收到！立即轉為「出勤」狀態
+        </button>
+        <button type="button" onclick="acknowledgeDispatch(false)"
+          class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">
+          僅確認收到（維持目前狀態）
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== JavaScript 邏輯區 ==================== -->
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -283,20 +400,20 @@
 
   <script>
     // =========================================================================
-    // 1. FIREBASE 設定區（請替換為你現有的 firebaseConfig）
+    // 1. FIREBASE 設定區 & 管理員密碼
     // =========================================================================
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyDqPdLDZfujmoSAadLJyp4fOGi9UEHge4U",
+      authDomain: "thpaa-b605e.firebaseapp.com",
+      databaseURL: "https://thpaa-b605e-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "thpaa-b605e",
+      storageBucket: "thpaa-b605e.firebasestorage.app",
+      messagingSenderId: "547706160276",
+      appId: "1:547706160276:web:c9575657f014351600a081"
     };
 
-    // 獨立資料庫節點路徑（與你原本的追蹤工具完全隔離，可共用同一個 Firebase 專案）
     const DB_ROOT = 'marathon_ems_tracker';
+    const ADMIN_PASSWORD = '8868'; // 管理員模式登入密碼
 
     // =========================================================================
     // 2. 全域變數與狀態管理
@@ -308,7 +425,7 @@
     let unitName = localStorage.getItem('ems_unit_name') || '';
     let currentStatus = 'STANDBY';
     let pendingActionStatus = null;
-    let isSubmitting = false; // 防止連點重複送出
+    let isSubmitting = false;
 
     let map = null;
     let myMarker = null;
@@ -316,6 +433,12 @@
     let watchId = null;
     let wakeLock = null;
     let isSystemStarted = false;
+
+    // 音效與派遣通知控制
+    let audioCtx = null;
+    let alertRepeatTimer = null;
+    let latestDispatchObj = null;
+    let lastHandledDispatchId = localStorage.getItem('ems_last_dispatch_id') || '';
 
     const unitMarkers = {};
     let allUnitsData = {};
@@ -328,13 +451,84 @@
     };
 
     const QUICK_TAGS = {
-      DISPATCHED: ['接獲大會通報出勤', '巡邏發現選手倒地', '前往賽道折返點', '支援前方救護組', '攜帶AED前往'],
+      DISPATCHED: ['接獲總站派遣出勤', '巡邏發現選手倒地', '前往賽道折返點', '支援前方救護組', '攜帶AED前往'],
       ARRIVED:    ['已接觸選手評估中', '肌肉抽筋/噴劑處置', '擦挫傷/簡易包紮', '疑似熱衰竭/降溫中', '意識不清/請求救護車後送'],
       STANDBY:    ['處置完畢選手續跑', '已交接救護車後送', '選手棄賽已上收容車', '誤觸恢復待命']
     };
 
     // =========================================================================
-    // 3. 初始化地圖（Leaflet + 台灣國土測繪中心圖磚）
+    // 3. 提示音 (Web Audio API) 與手機震動引擎
+    // =========================================================================
+    function unlockAudioEngine() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        if (!audioCtx) {
+          audioCtx = new AudioContextClass();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      } catch (e) {
+        console.warn('AudioContext 初始化失敗:', e);
+      }
+    }
+
+    function playSingleAlarmBurst() {
+      try {
+        unlockAudioEngine();
+        if (!audioCtx) return;
+
+        const now = audioCtx.currentTime;
+        const freqs = [880, 660, 880, 660];
+        freqs.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.18);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.18);
+          gain.gain.exponentialRampToValueAtTime(0.35, now + idx * 0.18 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + (idx + 1) * 0.18 - 0.01);
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + idx * 0.18);
+          osc.stop(now + (idx + 1) * 0.18);
+        });
+      } catch (e) {
+        console.warn('播放提示音失敗:', e);
+      }
+
+      if ('vibrate' in navigator) {
+        navigator.vibrate([400, 150, 400, 150, 600]);
+      }
+    }
+
+    function startContinuousAlarm() {
+      stopContinuousAlarm();
+      playSingleAlarmBurst();
+      alertRepeatTimer = setInterval(() => {
+        playSingleAlarmBurst();
+      }, 2800);
+    }
+
+    function stopContinuousAlarm() {
+      if (alertRepeatTimer) {
+        clearInterval(alertRepeatTimer);
+        alertRepeatTimer = null;
+      }
+      if ('vibrate' in navigator) {
+        navigator.vibrate(0);
+      }
+    }
+
+    function testAlertSound() {
+      playSingleAlarmBurst();
+    }
+
+    // =========================================================================
+    // 4. 初始化地圖（Leaflet + 台灣國土測繪中心圖磚）
     // =========================================================================
     function initMap() {
       map = L.map('map', {
@@ -350,7 +544,7 @@
     }
 
     // =========================================================================
-    // 4. 螢幕恆亮功能 (Screen Wake Lock API)
+    // 5. 螢幕恆亮功能 (Screen Wake Lock API)
     // =========================================================================
     async function requestWakeLock() {
       if (!('wakeLock' in navigator)) {
@@ -400,17 +594,10 @@
     });
 
     // =========================================================================
-    // 5. Firebase 初始化與 Anonymous Auth
+    // 6. Firebase 初始化與 Anonymous Auth
     // =========================================================================
     function initFirebase() {
       const banner = document.getElementById('authStatusBanner');
-
-      // 防呆：檢查是否尚未替換預設 firebaseConfig
-      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY') {
-        banner.className = 'text-xs text-red-400 bg-red-950/60 border border-red-700 rounded-lg px-3 py-2 font-semibold';
-        banner.textContent = '⚠️ 尚未設定 firebaseConfig！請在程式碼第 273 行填入你的 Firebase 金鑰。';
-        return;
-      }
 
       try {
         if (!firebase.apps.length) {
@@ -451,23 +638,34 @@
       const btnRider = document.getElementById('btnSelectRider');
       const btnDispatch = document.getElementById('btnSelectDispatch');
       const inputGroup = document.getElementById('riderInputGroup');
+      const pinGroup = document.getElementById('adminPinGroup');
+      const startBtn = document.getElementById('btnStartSystem');
 
       if (role === 'rider') {
         btnRider.className = 'role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition';
         btnDispatch.className = 'role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500';
         inputGroup.classList.remove('hidden');
+        pinGroup.classList.add('hidden');
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold text-white text-base shadow-lg transition';
       } else {
         btnDispatch.className = 'role-btn p-4 rounded-xl border-2 border-blue-500 bg-blue-950/40 text-left transition';
         btnRider.className = 'role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500';
         inputGroup.classList.add('hidden');
+        pinGroup.classList.remove('hidden');
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold text-white text-base shadow-lg transition';
+        setTimeout(() => document.getElementById('inputAdminPin').focus(), 100);
       }
     }
 
     function reopenSetup() {
+      stopContinuousAlarm();
+      document.getElementById('inputAdminPin').value = '';
       document.getElementById('setupModal').classList.remove('hidden');
     }
 
     async function startSystem() {
+      unlockAudioEngine();
+
       if (selectedRole === 'rider') {
         const inputVal = document.getElementById('inputUnitName').value.trim();
         if (!inputVal) {
@@ -477,7 +675,15 @@
         unitName = inputVal;
         localStorage.setItem('ems_unit_name', unitName);
       } else {
-        unitName = '救護指揮總站';
+        // 驗證管理員密碼
+        const pinVal = document.getElementById('inputAdminPin').value.trim();
+        if (pinVal !== ADMIN_PASSWORD) {
+          alert('❌ 管理員密碼錯誤，請重新輸入！');
+          document.getElementById('inputAdminPin').value = '';
+          document.getElementById('inputAdminPin').focus();
+          return;
+        }
+        unitName = '救護總站（管理員）';
       }
 
       isSystemStarted = true;
@@ -492,12 +698,12 @@
       listenToUnits();
 
       if (selectedRole === 'rider') {
-        roleBadge.textContent = '🏍️ 機車組';
+        roleBadge.textContent = '🏍️ 一般用戶';
         roleBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0';
+        document.getElementById('btnTestAlert').classList.remove('hidden');
         document.getElementById('riderControlPanel').classList.remove('hidden');
         document.getElementById('dispatchDashboard').classList.add('hidden');
 
-        // 檢查雲端是否已有此裝置的既有狀態（防止重新整理網頁時狀態被洗掉）
         const snap = await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).once('value');
         const existing = snap.val();
         if (existing && existing.status) {
@@ -520,15 +726,17 @@
             isOffline: false,
             updatedAt: firebase.database.ServerValue.TIMESTAMP
           });
-          writeLogRecord('ONLINE', '機車救護組上線待命');
+          writeLogRecord('ONLINE', '一般用戶（機車組）上線待命');
         }
+
+        listenToMyDispatches();
       } else {
-        roleBadge.textContent = '🖥️ 總站監控';
+        roleBadge.textContent = '🛡️ 管理員模式';
         roleBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-blue-600 text-white shrink-0';
+        document.getElementById('btnTestAlert').classList.add('hidden');
         document.getElementById('riderControlPanel').classList.add('hidden');
         document.getElementById('dispatchDashboard').classList.remove('hidden');
 
-        // 若原本身分是機車組切換成總站，移除自己的機車標記以免誤導
         if (currentUser) {
           db.ref(`${DB_ROOT}/units/${currentUser.uid}`).remove();
         }
@@ -539,7 +747,7 @@
     }
 
     // =========================================================================
-    // 6. GPS 連續定位與即時同步上傳
+    // 7. GPS 連續定位與即時同步上傳
     // =========================================================================
     function startGPSTracking() {
       if (!('geolocation' in navigator)) {
@@ -588,7 +796,7 @@
                 icon: L.divIcon({
                   className: '',
                   html: `<div class="ems-marker-wrapper">
-                          <div class="ems-marker-badge bg-purple-700">🏥 總站位置</div>
+                          <div class="ems-marker-badge bg-purple-700">🛡️ 總站管理員</div>
                           <div class="ems-marker-dot bg-purple-600">⛺</div>
                         </div>`
                 })
@@ -621,7 +829,7 @@
     }
 
     // =========================================================================
-    // 7. 機車組：狀態回報對話框與寫入 Firebase（含防連點鎖定）
+    // 8. 一般用戶：狀態回報對話框與寫入 Firebase
     // =========================================================================
     function openReportModal(targetStatus) {
       pendingActionStatus = targetStatus;
@@ -669,27 +877,7 @@
 
       try {
         const note = document.getElementById('reportNoteInput').value.trim();
-        currentStatus = pendingActionStatus;
-        const nowMs = Date.now();
-
-        const updatePayload = {
-          uid: currentUser.uid,
-          name: unitName,
-          status: currentStatus,
-          lastNote: note || `回報${STATUS_META[currentStatus].short}`,
-          lastActionTime: nowMs,
-          updatedAt: firebase.database.ServerValue.TIMESTAMP,
-          isOffline: false
-        };
-        if (myCoords) {
-          updatePayload.lat = myCoords.lat;
-          updatePayload.lng = myCoords.lng;
-        }
-
-        await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update(updatePayload);
-        await writeLogRecord(currentStatus, note);
-
-        syncLocalRiderUI(currentStatus, note, nowMs);
+        await applyRiderStatusChange(pendingActionStatus, note);
         closeReportModal();
       } catch (err) {
         alert('回報傳送失敗，請檢查網路連線：' + err.message);
@@ -697,6 +885,29 @@
         confirmBtn.textContent = '確認送出回報';
         isSubmitting = false;
       }
+    }
+
+    async function applyRiderStatusChange(newStatus, note) {
+      currentStatus = newStatus;
+      const nowMs = Date.now();
+
+      const updatePayload = {
+        uid: currentUser.uid,
+        name: unitName,
+        status: currentStatus,
+        lastNote: note || `回報${STATUS_META[currentStatus].short}`,
+        lastActionTime: nowMs,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP,
+        isOffline: false
+      };
+      if (myCoords) {
+        updatePayload.lat = myCoords.lat;
+        updatePayload.lng = myCoords.lng;
+      }
+
+      await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update(updatePayload);
+      await writeLogRecord(currentStatus, note);
+      syncLocalRiderUI(currentStatus, note, nowMs);
     }
 
     function syncLocalRiderUI(status, note, timestampMs) {
@@ -729,7 +940,131 @@
     }
 
     // =========================================================================
-    // 8. 監聽全隊座標與狀態（地圖渲染 + 總站面板更新）
+    // 9. 管理員派遣機制（發送指令 & 一般用戶端接收提示音震動）
+    // =========================================================================
+    function openAdminDispatchModal(preselectUid) {
+      const selectEl = document.getElementById('dispatchTargetSelect');
+      const units = Object.values(allUnitsData);
+
+      if (units.length === 0) {
+        alert('目前線上沒有一般用戶（機車組）可供派遣！');
+        return;
+      }
+
+      selectEl.innerHTML = units.map(u => {
+        const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
+        const selectedAttr = u.uid === preselectUid ? 'selected' : '';
+        return `<option value="${u.uid}" ${selectedAttr}>${escapeHtml(u.name)} (${meta.short})</option>`;
+      }).join('');
+
+      document.getElementById('adminDispatchNote').value = '';
+      document.getElementById('adminDispatchModal').classList.remove('hidden');
+    }
+
+    function closeAdminDispatchModal() {
+      document.getElementById('adminDispatchModal').classList.add('hidden');
+    }
+
+    function appendDispatchText(txt) {
+      const box = document.getElementById('adminDispatchNote');
+      box.value = box.value ? `${box.value}；${txt}` : txt;
+    }
+
+    async function sendAdminDispatch() {
+      const targetUid = document.getElementById('dispatchTargetSelect').value;
+      const msg = document.getElementById('adminDispatchNote').value.trim();
+      if (!targetUid) return;
+      if (!msg) {
+        alert('請輸入或點選派遣任務內容！');
+        return;
+      }
+
+      const targetUnit = allUnitsData[targetUid];
+      const targetName = targetUnit ? targetUnit.name : '指定機車組';
+      const dispatchId = `disp_${Date.now()}`;
+
+      const btn = document.getElementById('btnSendDispatch');
+      btn.disabled = true;
+      btn.textContent = '發送中...';
+
+      try {
+        await db.ref(`${DB_ROOT}/dispatches/${targetUid}`).set({
+          dispatchId: dispatchId,
+          targetUid: targetUid,
+          targetName: targetName,
+          message: msg,
+          acknowledged: false,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        await db.ref(`${DB_ROOT}/logs`).push({
+          uid: currentUser.uid,
+          name: `🛡️ 總站 ➔ ${targetName}`,
+          action: 'ADMIN_DISPATCH',
+          note: msg,
+          lat: targetUnit ? targetUnit.lat : null,
+          lng: targetUnit ? targetUnit.lng : null,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        closeAdminDispatchModal();
+        alert(`✅ 已發送派遣指令給「${targetName}」，對方手機將立即響鈴與震動！`);
+      } catch (err) {
+        alert('派遣發送失敗：' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚨 發送派遣警報';
+      }
+    }
+
+    function listenToMyDispatches() {
+      if (!currentUser) return;
+      db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data || data.acknowledged) return;
+        if (data.dispatchId === lastHandledDispatchId) return;
+
+        latestDispatchObj = data;
+        document.getElementById('incomingDispatchMessage').textContent = data.message;
+        document.getElementById('incomingDispatchTime').textContent =
+          `總站於 ${data.timestamp ? formatTime(data.timestamp) : '剛剛'} 發出派遣`;
+        document.getElementById('incomingDispatchModal').classList.remove('hidden');
+
+        startContinuousAlarm();
+      });
+    }
+
+    async function acknowledgeDispatch(switchToDispatched) {
+      stopContinuousAlarm();
+      document.getElementById('incomingDispatchModal').classList.add('hidden');
+
+      if (!latestDispatchObj || !currentUser) return;
+      const disp = latestDispatchObj;
+      lastHandledDispatchId = disp.dispatchId;
+      localStorage.setItem('ems_last_dispatch_id', disp.dispatchId);
+
+      await db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).update({
+        acknowledged: true,
+        acknowledgedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+
+      document.getElementById('riderTaskContent').textContent = disp.message;
+      document.getElementById('riderTaskTime').textContent = disp.timestamp ? formatTime(disp.timestamp) : formatTime(Date.now());
+      document.getElementById('riderActiveTaskBanner').classList.remove('hidden');
+
+      if (switchToDispatched) {
+        await applyRiderStatusChange('DISPATCHED', `接獲總站派遣：${disp.message}`);
+      } else {
+        await writeLogRecord('ACK_DISPATCH', `已確認收到總站指令：${disp.message}`);
+      }
+    }
+
+    function dismissTaskBanner() {
+      document.getElementById('riderActiveTaskBanner').classList.add('hidden');
+    }
+
+    // =========================================================================
+    // 10. 監聽全隊座標與狀態（地圖渲染 + 管理員面板更新）
     // =========================================================================
     function listenToUnits() {
       db.ref(`${DB_ROOT}/units`).on('value', (snapshot) => {
@@ -757,7 +1092,6 @@
         const meta = STATUS_META[unit.status] || STATUS_META.STANDBY;
         const badgeColorClass = unit.isOffline ? 'status-offline' : meta.class;
         const timeStr = unit.updatedAt ? formatTime(unit.updatedAt) : '--:--';
-        // 出勤中的標記層級自動拉高，避免被其他圖示蓋住
         const zOffset = unit.status === 'DISPATCHED' ? 900 : (unit.status === 'ARRIVED' ? 500 : 100);
 
         const iconHtml = `
@@ -771,12 +1105,20 @@
           </div>
         `;
 
+        const adminDispatchBtnHtml = selectedRole === 'dispatch'
+          ? `<button onclick="openAdminDispatchModal('${unit.uid}')"
+              style="margin-top:6px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
+              📢 派遣此機車組
+             </button>`
+          : '';
+
         const popupHtml = `
-          <div style="color:#0f172a; min-width:190px;">
+          <div style="color:#0f172a; min-width:195px;">
             <div style="font-weight:800; font-size:14px; margin-bottom:4px;">${escapeHtml(unit.name)}</div>
             <div style="font-size:12px; margin-bottom:2px;"><b>狀態：</b>${meta.label}</div>
             <div style="font-size:12px; margin-bottom:2px;"><b>最新回報：</b>${escapeHtml(unit.lastNote || '無')}</div>
             <div style="font-size:11px; color:#475569;"><b>GPS 更新：</b>${timeStr} (${unit.speed || 0} km/h)</div>
+            ${adminDispatchBtnHtml}
           </div>
         `;
 
@@ -797,7 +1139,7 @@
     }
 
     // =========================================================================
-    // 9. 救護總站專屬面板渲染、時間軸與清理工具
+    // 11. 管理員模式：面板渲染、時間軸與清理工具
     // =========================================================================
     function switchDispatchTab(tab) {
       const tabUnits = document.getElementById('tabUnits');
@@ -824,7 +1166,7 @@
       document.getElementById('onlineCount').textContent = units.length;
 
       if (units.length === 0) {
-        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無機車組上線...</div>';
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無一般用戶（機車組）上線...</div>';
         return;
       }
 
@@ -838,22 +1180,24 @@
         const actionTimeStr = u.lastActionTime ? formatTime(u.lastActionTime) : '--:--:--';
 
         return `
-          <div onclick="focusUnit('${u.uid}')"
-            class="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-800 border ${u.status === 'DISPATCHED' ? 'border-red-500/70' : 'border-slate-700'} cursor-pointer transition">
-            <div class="flex items-center justify-between mb-1.5">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="font-bold text-white text-sm truncate">${escapeHtml(u.name)}</span>
+          <div class="p-3 rounded-xl bg-slate-800/90 border ${u.status === 'DISPATCHED' ? 'border-red-500/70' : 'border-slate-700'} transition">
+            <div class="flex items-center justify-between mb-1.5 gap-2">
+              <div onclick="focusUnit('${u.uid}')" class="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                <span class="font-bold text-white text-sm truncate hover:underline">${escapeHtml(u.name)}</span>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${meta.class}">
                   ${meta.label}
                 </span>
               </div>
-              <span class="text-[11px] shrink-0 ml-1 ${isStale ? 'text-amber-400 font-bold' : 'text-slate-400'}">
-                ${isStale ? `⚠️ ${secAgo}秒前` : `🟢 ${secAgo}秒前`}
-              </span>
+              <button onclick="openAdminDispatchModal('${u.uid}')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shrink-0 shadow">
+                📢 派遣此組
+              </button>
             </div>
-            <div class="text-xs text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
+            <div onclick="focusUnit('${u.uid}')" class="cursor-pointer text-xs text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
               <span class="truncate">📝 ${escapeHtml(u.lastNote || '待命巡邏中')}</span>
-              <span class="text-[11px] text-slate-400 font-mono shrink-0">${actionTimeStr}</span>
+              <span class="text-[11px] shrink-0 font-mono ${isStale ? 'text-amber-400 font-bold' : 'text-slate-400'}">
+                ${actionTimeStr} (${secAgo}s)
+              </span>
             </div>
           </div>
         `;
@@ -865,7 +1209,6 @@
       if (unit && typeof unit.lat === 'number' && typeof unit.lng === 'number') {
         map.flyTo([unit.lat, unit.lng], 17);
         if (unitMarkers[uid]) {
-          // 置頂並開啟氣泡框
           Object.values(unitMarkers).forEach(m => m.setZIndexOffset(100));
           unitMarkers[uid].setZIndexOffset(1000);
           unitMarkers[uid].openPopup();
@@ -892,10 +1235,12 @@
       }
 
       const actionLabels = {
-        ONLINE:     { text: '🟢 上線待命', color: 'text-emerald-400' },
-        STANDBY:    { text: '✅ 恢復待命', color: 'text-emerald-400' },
-        DISPATCHED: { text: '🚨 回報出勤', color: 'text-red-400' },
-        ARRIVED:    { text: '🏥 到達現場', color: 'text-blue-400' }
+        ONLINE:         { text: '🟢 上線待命', color: 'text-emerald-400' },
+        STANDBY:        { text: '✅ 恢復待命', color: 'text-emerald-400' },
+        DISPATCHED:     { text: '🚨 回報出勤', color: 'text-red-400' },
+        ARRIVED:        { text: '🏥 到達現場', color: 'text-blue-400' },
+        ADMIN_DISPATCH: { text: '📢 總站派遣', color: 'text-amber-400' },
+        ACK_DISPATCH:   { text: '👌 確認收到派遣', color: 'text-amber-300' }
       };
 
       container.innerHTML = allLogsData.map(log => {
@@ -918,8 +1263,15 @@
         alert('目前沒有可匯出的勤務紀錄');
         return;
       }
-      const actionMap = { ONLINE: '上線', STANDBY: '恢復待命', DISPATCHED: '出勤', ARRIVED: '到達' };
-      let csvContent = '\uFEFF時間,呼號/隊員,動作狀態,補充備註,緯度,經度\n';
+      const actionMap = {
+        ONLINE: '上線',
+        STANDBY: '恢復待命',
+        DISPATCHED: '出勤',
+        ARRIVED: '到達',
+        ADMIN_DISPATCH: '總站派遣',
+        ACK_DISPATCH: '確認收到派遣'
+      };
+      let csvContent = '\uFEFF時間,呼號/對象,動作狀態,補充備註,緯度,經度\n';
 
       [...allLogsData].reverse().forEach(log => {
         const t = log.timestamp ? new Date(log.timestamp).toLocaleString('zh-TW', { hour12: false }) : '';
@@ -939,7 +1291,7 @@
     }
 
     async function clearAllTestData() {
-      if (!confirm('確定要清空雲端所有的「機車定位」與「通報時間軸」紀錄嗎？（建議僅在賽前測試完畢時使用）')) {
+      if (!confirm('確定要清空雲端所有的「機車定位」、「派遣通知」與「通報時間軸」紀錄嗎？（建議僅在賽前測試完畢時使用）')) {
         return;
       }
       await db.ref(`${DB_ROOT}`).remove();
