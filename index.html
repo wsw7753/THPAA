@@ -198,8 +198,8 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-semibold text-slate-300 mb-1">3. 隊員姓名（選填）：</label>
-            <input type="text" id="inputPersonName" placeholder="例：王小明"
+            <label class="block text-sm font-semibold text-slate-300 mb-1">3. 隊員姓名或代號（選填）：</label>
+            <input type="text" id="inputPersonName" placeholder="例：王A 或 EMT-1（建議用代號）"
               class="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 text-base" />
           </div>
         </div>
@@ -207,9 +207,9 @@
         <!-- 管理員模式：密碼輸入 -->
         <div id="adminPinGroup" class="hidden">
           <label class="block text-sm font-semibold text-blue-300 mb-1">2. 輸入管理員密碼：</label>
-          <input type="password" id="inputAdminPin" inputmode="numeric" maxlength="8" placeholder="請輸入總站管理密碼"
+          <input type="password" id="inputAdminPin" placeholder="請輸入總站管理密碼"
             onkeydown="if(event.key==='Enter') startSystem()"
-            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-blue-500/70 text-white placeholder-slate-400 focus:outline-none focus:border-blue-400 text-base tracking-widest" />
+            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-blue-500/70 text-white placeholder-slate-400 focus:outline-none focus:border-blue-400 text-base tracking-wider" />
         </div>
 
         <div id="authStatusBanner" class="text-xs text-amber-400 bg-amber-950/50 border border-amber-800/60 rounded-lg px-3 py-2">
@@ -285,9 +285,10 @@
         <!-- 目前執行中案件橫幅 -->
         <div id="riderActiveCaseBanner" class="hidden bg-red-950/90 border border-red-500 rounded-xl px-3 py-2 mb-2.5 flex items-center justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center flex-wrap gap-1.5">
               <span id="riderCaseIdBadge" class="px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 font-black text-[11px]">#001</span>
               <span class="text-[11px] font-bold text-red-200">執行中案件 (<span id="riderCaseTime">--:--</span>)</span>
+              <span id="riderCaseDestBadge" class="hidden px-1.5 py-0.5 rounded bg-cyan-800 text-cyan-100 font-bold text-[11px]"></span>
             </div>
             <div id="riderCaseContent" class="text-xs font-bold text-white truncate mt-0.5"></div>
           </div>
@@ -362,7 +363,7 @@
         </div>
 
         <div class="flex gap-1">
-          <button onclick="openAdminDispatchModal('', null, '')" title="建立新案件並派遣"
+          <button onclick="openAdminDispatchModal('', null, '', false, '')" title="建立新案件並派遣"
             class="px-2 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
             📢 派案
           </button>
@@ -414,7 +415,7 @@
 
   <!-- ==================== 4. 一般用戶：勤務回報補述對話框 ==================== -->
   <div id="reportModal" class="hidden fixed inset-0 z-[2500] bg-black/80 flex items-end sm:items-center justify-center p-3">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[92dvh] overflow-y-auto">
       <div class="flex items-center justify-between mb-2">
         <h3 id="reportModalTitle" class="text-lg font-black text-white">🚨 回報「出勤」</h3>
         <button onclick="closeReportModal()" class="text-slate-400 hover:text-white text-xl px-2">✕</button>
@@ -424,7 +425,22 @@
       <div id="quickTagsContainer" class="flex flex-wrap gap-2 mb-3"></div>
 
       <textarea id="reportNoteInput" rows="3" placeholder="輸入公里數、選手狀況、處置內容或是否需救護車支援..."
-        class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-4"></textarea>
+        class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-3"></textarea>
+
+      <!-- 救護車專用：後送醫院 / 後送總站自填 -->
+      <div id="ambulanceTransportGroup" class="hidden mb-4 p-3 rounded-xl bg-cyan-950/35 border border-cyan-700/60">
+        <label class="block text-xs font-semibold text-cyan-300 mb-1.5">🏥 後送醫院 / 後送總站（救護車填寫）：</label>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button type="button" onclick="setTransportInput('成大醫院')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 成大醫院</button>
+          <button type="button" onclick="setTransportInput('奇美醫院')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 奇美醫院</button>
+          <button type="button" onclick="setTransportInput('救護總站')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 救護總站</button>
+        </div>
+        <input type="text" id="inputAmbulanceDestination" placeholder="自行輸入醫院名稱或後送總站（例：部立醫院、醫療站）"
+          class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 text-xs" />
+      </div>
 
       <div class="grid grid-cols-2 gap-3">
         <button type="button" onclick="closeReportModal()"
@@ -439,7 +455,7 @@
     </div>
   </div>
 
-  <!-- ==================== 5. 管理員：派案 / 支援增派對話框 ==================== -->
+  <!-- ==================== 5. 管理員：派案 / 同案派遣 / 支援增派對話框 ==================== -->
   <div id="adminDispatchModal" class="hidden fixed inset-0 z-[2600] bg-black/80 flex items-end sm:items-center justify-center p-3">
     <div class="bg-slate-900 border border-amber-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[92dvh] overflow-y-auto">
       <div class="flex items-center justify-between mb-3">
@@ -487,9 +503,9 @@
             class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
             + 跑者倒地評估
           </button>
-          <button type="button" onclick="appendDispatchText('疑似熱衰竭/抽筋，請前往處置')"
+          <button type="button" onclick="appendDispatchText('同一跑者狀況變化，請再次前往處置')"
             class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
-            + 熱衰竭/抽筋
+            + 同案再次處置
           </button>
           <button type="button" onclick="appendDispatchText('請攜帶 AED 趕赴現場')"
             class="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
@@ -502,10 +518,25 @@
         </div>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-3">
         <label class="block text-xs font-semibold text-slate-300 mb-1">4. 事故公里數 / 傷患狀況描述：</label>
         <textarea id="adminDispatchNote" rows="2" placeholder="例：約 14.2K 補給站前方，男性跑者頭暈無力..."
           class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 text-sm"></textarea>
+      </div>
+
+      <!-- 總站端：指定或更新後送醫院 / 後送總站 -->
+      <div class="mb-4 p-3 rounded-xl bg-cyan-950/35 border border-cyan-700/60">
+        <label class="block text-xs font-semibold text-cyan-300 mb-1.5">5. 後送醫院 / 後送總站（選填，可由總站指定或更新）：</label>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button type="button" onclick="setAdminTransportInput('成大醫院')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 成大醫院</button>
+          <button type="button" onclick="setAdminTransportInput('奇美醫院')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 奇美醫院</button>
+          <button type="button" onclick="setAdminTransportInput('救護總站')"
+            class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 救護總站</button>
+        </div>
+        <input type="text" id="inputAdminTransportDest" placeholder="輸入後送醫院或後送總站名稱"
+          class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 text-xs" />
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -668,7 +699,7 @@
       <!-- 步驟 1：匯出報表 -->
       <div class="p-3.5 rounded-xl bg-slate-800/90 border border-emerald-500/50 mb-4">
         <div class="text-xs font-bold text-emerald-400 mb-1">步驟 1：下載本場賽事完整勤務報表（Excel CSV）</div>
-        <div class="text-[11px] text-slate-400 mb-2.5">包含案件編號、發生時間、經緯度、出勤單位、時間軸與操作裝置碼 (UID) 稽核紀錄。</div>
+        <div class="text-[11px] text-slate-400 mb-2.5">包含案件編號、發生時間、後送醫院/總站、經緯度、出勤單位、時間軸與裝置碼稽核紀錄。</div>
         <button type="button" onclick="exportCasesCSV()"
           class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow flex items-center justify-center gap-2">
           <span>📥 立即匯出案件追蹤總表 (.csv)</span>
@@ -687,8 +718,8 @@
           <span>連同「賽道固定站點標註（救護站/補給站）」一併清空</span>
         </label>
 
-        <input type="password" id="endEventAdminPin" inputmode="numeric" maxlength="8" placeholder="請再次輸入管理員密碼確認清空"
-          class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-rose-500/60 text-white placeholder-slate-400 text-sm mb-3 tracking-widest" />
+        <input type="password" id="endEventAdminPin" placeholder="請再次輸入管理員密碼確認清空"
+          class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-rose-500/60 text-white placeholder-slate-400 text-sm mb-3 tracking-wider" />
 
         <button type="button" onclick="executeEndEventReset()"
           class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow">
@@ -710,6 +741,9 @@
       <div class="my-4 p-4 rounded-xl bg-red-950/60 border border-red-500/70 text-left">
         <div class="text-xs text-red-300 mb-1">派遣任務內容：</div>
         <div id="incomingDispatchMessage" class="text-base font-bold text-white leading-relaxed whitespace-pre-wrap"></div>
+        <div id="incomingTransportDestBadge" class="hidden mt-2 pt-2 border-t border-red-800/60 text-xs text-cyan-300 font-bold">
+          🏥 後送醫院／後送總站：<span id="incomingTransportDestText"></span>
+        </div>
         <div id="incomingDispatchCoordsBadge" class="hidden mt-2 pt-2 border-t border-red-800/60 text-xs text-amber-300 font-mono">
           📍 已附帶事故點精準座標（地圖已標示紅點）
         </div>
@@ -740,7 +774,7 @@
 
   <script>
     // =========================================================================
-    // 1. FIREBASE 設定區 & 管理員密碼
+    // 1. FIREBASE 設定區 & 管理員密碼雜湊 (SHA-256)
     // =========================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDqPdLDZfujmoSAadLJyp4fOGi9UEHge4U",
@@ -753,8 +787,18 @@
     };
 
     const DB_ROOT = 'marathon_ems_tracker';
-    const ADMIN_PASSWORD = '8868';
+    const ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
+
+    async function sha256Hex(text) {
+      if (!window.crypto || !window.crypto.subtle) {
+        throw new Error('目前環境不支援 Web Crypto SHA-256（請使用 HTTPS 或 localhost）');
+      }
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
 
     // =========================================================================
     // 2. 全域變數與狀態管理
@@ -792,6 +836,7 @@
     let adminDraftPinMarker = null;
     let closedCasePinMarker = null;
     let supportTargetCaseId = '';
+    let isRepeatSameCaseDispatch = false;
     let radioTargetCaseId = '';
     let pendingPoiCoords = null;
     let selectedPoiType = 'MEDICAL';
@@ -1000,7 +1045,7 @@
             ${selectedDispatchCoords.lat}, ${selectedDispatchCoords.lng}
           </div>
           <div style="display:flex; flex-direction:column; gap:5px;">
-            <button onclick="openAdminDispatchModal('', true, '')"
+            <button onclick="openAdminDispatchModal('', true, '', false, '')"
               style="width:100%; padding:6px 8px; background:#dc2626; color:#fff; border:none; border-radius:6px; font-weight:800; font-size:12px; cursor:pointer;">
               🚨 建立案件並派遣至此
             </button>
@@ -1088,7 +1133,7 @@
     });
 
     // =========================================================================
-    // 7. Firebase 初始化與身份登入（含即時防撞號驗證與重連派遣恢復）
+    // 7. Firebase 初始化與身份登入（含即時防撞號驗證、SHA-256 驗證與重連恢復）
     // =========================================================================
     function initFirebase() {
       const banner = document.getElementById('authStatusBanner');
@@ -1198,10 +1243,16 @@
         unitName = person ? `${callsign} (${person})` : callsign;
       } else {
         const pinVal = document.getElementById('inputAdminPin').value.trim();
-        if (pinVal !== ADMIN_PASSWORD) {
-          alert('❌ 管理員密碼錯誤，請重新輸入！');
-          document.getElementById('inputAdminPin').value = '';
-          document.getElementById('inputAdminPin').focus();
+        try {
+          const inputHash = await sha256Hex(pinVal);
+          if (inputHash !== ADMIN_PASSWORD_SHA256) {
+            alert('❌ 管理員密碼錯誤，請重新輸入！');
+            document.getElementById('inputAdminPin').value = '';
+            document.getElementById('inputAdminPin').focus();
+            return;
+          }
+        } catch (err) {
+          alert('❌ 密碼驗證失敗：' + err.message);
           return;
         }
         unitName = '救護總站（管理員）';
@@ -1415,8 +1466,16 @@
     }
 
     // =========================================================================
-    // 10. 一般用戶：狀態回報、補標事故點與案件時間軸更新
+    // 10. 一般用戶：狀態回報、後送醫院/總站自填、補標事故點與時間軸更新
     // =========================================================================
+    function setTransportInput(val) {
+      document.getElementById('inputAmbulanceDestination').value = val;
+    }
+
+    function setAdminTransportInput(val) {
+      document.getElementById('inputAdminTransportDest').value = val;
+    }
+
     function openReportModal(targetStatus) {
       pendingActionStatus = targetStatus;
       const modal = document.getElementById('reportModal');
@@ -1425,15 +1484,26 @@
       const confirmBtn = document.getElementById('btnConfirmReport');
       const tagsContainer = document.getElementById('quickTagsContainer');
       const noteInput = document.getElementById('reportNoteInput');
+      const ambGroup = document.getElementById('ambulanceTransportGroup');
+      const ambDestInput = document.getElementById('inputAmbulanceDestination');
 
       noteInput.value = '';
+      const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
+
+      if (vehicleType === 'AMBULANCE') {
+        ambGroup.classList.remove('hidden');
+        ambDestInput.value = (curCase && curCase.transportDestination) ? curCase.transportDestination : '';
+      } else {
+        ambGroup.classList.add('hidden');
+        ambDestInput.value = '';
+      }
+
       const meta = STATUS_META[targetStatus];
       titleEl.textContent = `回報狀態：${meta.label}`;
       confirmBtn.className = `py-3 rounded-xl text-white font-bold text-sm shadow-lg ${meta.btnColor}`;
       confirmBtn.disabled = false;
       confirmBtn.textContent = '確認送出回報';
 
-      const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
       if (targetStatus === 'DISPATCHED') {
         hintEl.textContent = curCase && curCase.status === 'ACTIVE'
           ? `📌 目前已綁定進行中案件 ${curCase.caseCode}，送出將更新該案進度`
@@ -1479,7 +1549,10 @@
 
       try {
         const note = document.getElementById('reportNoteInput').value.trim();
-        await applyRiderStatusChange(pendingActionStatus, note);
+        const transportDest = vehicleType === 'AMBULANCE'
+          ? document.getElementById('inputAmbulanceDestination').value.trim()
+          : '';
+        await applyRiderStatusChange(pendingActionStatus, note, transportDest);
         closeReportModal();
       } catch (err) {
         alert('回報傳送失敗，請檢查網路連線：' + err.message);
@@ -1489,11 +1562,14 @@
       }
     }
 
-    async function applyRiderStatusChange(newStatus, note) {
+    async function applyRiderStatusChange(newStatus, note, transportDest = '') {
       currentStatus = newStatus;
       const nowMs = Date.now();
       let targetCaseId = activeCaseId;
       const devCode = getShortDeviceCode();
+      const fullNote = transportDest
+        ? (note ? `${note}（後送：${transportDest}）` : `後送至：${transportDest}`)
+        : note;
 
       if ((newStatus === 'DISPATCHED' || newStatus === 'ARRIVED') && (!targetCaseId || !allCasesData[targetCaseId] || allCasesData[targetCaseId].status === 'CLOSED')) {
         const caseCode = await generateNextCaseCode();
@@ -1507,7 +1583,8 @@
           status: 'ACTIVE',
           source: 'RIDER_SELF',
           creatorDeviceCode: devCode,
-          summary: note || `${unitName} 巡邏發現事故出勤`,
+          summary: fullNote || `${unitName} 巡邏發現事故出勤`,
+          transportDestination: transportDest || '',
           lat: myCoords ? myCoords.lat : null,
           lng: myCoords ? myCoords.lng : null,
           assignedUnits: { [currentUser.uid]: unitName },
@@ -1519,16 +1596,19 @@
           targetCaseId,
           unitName,
           newStatus === 'DISPATCHED' ? '🚨 主動立案並出勤' : '🏥 主動立案並到達現場',
-          note,
+          fullNote,
           devCode
         );
       } else if (targetCaseId && allCasesData[targetCaseId]) {
+        if (transportDest) {
+          await db.ref(`${DB_ROOT}/cases/${targetCaseId}/transportDestination`).set(transportDest);
+        }
         if (newStatus === 'DISPATCHED') {
-          await appendCaseTimeline(targetCaseId, unitName, '🚨 確認出勤前往', note, devCode);
+          await appendCaseTimeline(targetCaseId, unitName, '🚨 確認出勤前往', fullNote, devCode);
         } else if (newStatus === 'ARRIVED') {
-          await appendCaseTimeline(targetCaseId, unitName, '🏥 抵達事故現場', note, devCode);
+          await appendCaseTimeline(targetCaseId, unitName, '🏥 抵達事故現場', fullNote, devCode);
         } else if (newStatus === 'STANDBY') {
-          await appendCaseTimeline(targetCaseId, unitName, '✅ 任務完成並結案', note, devCode);
+          await appendCaseTimeline(targetCaseId, unitName, '✅ 任務完成並結案', fullNote, devCode);
           await db.ref(`${DB_ROOT}/cases/${targetCaseId}`).update({
             status: 'CLOSED',
             closedAt: firebase.database.ServerValue.TIMESTAMP,
@@ -1545,7 +1625,7 @@
         name: unitName,
         status: currentStatus,
         activeCaseId: activeCaseId || null,
-        lastNote: note || `回報${STATUS_META[currentStatus].short}`,
+        lastNote: fullNote || `回報${STATUS_META[currentStatus].short}`,
         lastActionTime: nowMs,
         updatedAt: firebase.database.ServerValue.TIMESTAMP,
         isOffline: false
@@ -1556,7 +1636,7 @@
       }
 
       await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update(updatePayload);
-      syncLocalRiderUI(currentStatus, note, nowMs);
+      syncLocalRiderUI(currentStatus, fullNote, nowMs);
     }
 
     function syncLocalRiderUI(status, note, timestampMs) {
@@ -1620,6 +1700,14 @@
       document.getElementById('riderCaseTime').textContent = curCase.createdAt ? formatTime(curCase.createdAt) : '--:--';
       document.getElementById('riderCaseContent').textContent = curCase.summary || '執行救護任務中';
 
+      const destBadge = document.getElementById('riderCaseDestBadge');
+      if (curCase.transportDestination) {
+        destBadge.textContent = `🏥 ${curCase.transportDestination}`;
+        destBadge.classList.remove('hidden');
+      } else {
+        destBadge.classList.add('hidden');
+      }
+
       const hasCoords = typeof curCase.lat === 'number' && typeof curCase.lng === 'number';
       document.getElementById('btnBannerLocate').classList.toggle('hidden', !hasCoords);
       document.getElementById('btnBannerNav').classList.toggle('hidden', !hasCoords);
@@ -1643,9 +1731,9 @@
     }
 
     // =========================================================================
-    // 11. 管理員派案、逾時追蹤、支援增派 & 無線電代記補述
+    // 11. 管理員派案、同案派遣、支援增派、後送填寫 & 無線電代記補述
     // =========================================================================
-    function openAdminDispatchModal(preselectUid, keepExistingPin, existingCaseId) {
+    function openAdminDispatchModal(preselectUid, keepExistingPin, existingCaseId, isSameCase = false, presetDest = '') {
       const selectEl = document.getElementById('dispatchTargetSelect');
       const units = Object.values(allUnitsData).filter(u => !u.isOffline);
 
@@ -1655,19 +1743,31 @@
       }
 
       supportTargetCaseId = existingCaseId || '';
+      isRepeatSameCaseDispatch = !!(supportTargetCaseId && isSameCase);
+
       const titleEl = document.getElementById('adminDispatchModalTitle');
       const noticeEl = document.getElementById('supportCaseNotice');
       const locSection = document.getElementById('dispatchLocationSection');
       const sendBtn = document.getElementById('btnSendDispatch');
+      const destInput = document.getElementById('inputAdminTransportDest');
 
       if (supportTargetCaseId && allCasesData[supportTargetCaseId]) {
         const c = allCasesData[supportTargetCaseId];
-        titleEl.textContent = `➕ 增派支援至案件 ${c.caseCode}`;
-        noticeEl.textContent = `將把選取車輛加入案件 ${c.caseCode}（${c.summary}），並沿用該案座標與時間軸。`;
+        destInput.value = presetDest || c.transportDestination || '';
+        if (isRepeatSameCaseDispatch) {
+          titleEl.textContent = `🔁 同案派遣 · 案件 ${c.caseCode}`;
+          noticeEl.textContent = `針對同一案件 ${c.caseCode}（${c.summary}）再次派遣車輛或指定/更新後送醫院/總站。`;
+          sendBtn.textContent = `🔁 確認同案派遣（${c.caseCode}）`;
+        } else {
+          titleEl.textContent = `➕ 增派支援至案件 ${c.caseCode}`;
+          noticeEl.textContent = `將把選取車輛加入案件 ${c.caseCode}（${c.summary}），並沿用該案座標與時間軸。`;
+          sendBtn.textContent = `🚨 確認增派至 ${c.caseCode}`;
+        }
         noticeEl.classList.remove('hidden');
         locSection.classList.add('hidden');
-        sendBtn.textContent = `🚨 確認增派至 ${c.caseCode}`;
       } else {
+        isRepeatSameCaseDispatch = false;
+        destInput.value = presetDest || '';
         titleEl.textContent = '📢 建立新案件並派遣';
         noticeEl.classList.add('hidden');
         locSection.classList.remove('hidden');
@@ -1690,6 +1790,7 @@
     function closeAdminDispatchModal() {
       document.getElementById('adminDispatchModal').classList.add('hidden');
       supportTargetCaseId = '';
+      isRepeatSameCaseDispatch = false;
       removeAdminDraftPin();
     }
 
@@ -1827,6 +1928,7 @@
     async function sendAdminDispatch() {
       const targetUid = document.getElementById('dispatchTargetSelect').value;
       const msg = document.getElementById('adminDispatchNote').value.trim();
+      const transportDest = document.getElementById('inputAdminTransportDest').value.trim();
       if (!targetUid) return;
 
       const targetUnit = allUnitsData[targetUid];
@@ -1845,19 +1947,32 @@
         let targetLng = null;
         let finalMsg = msg;
 
+        const baseActionText = msg || (isRepeatSameCaseDispatch ? '同案再次派遣前往處置' : '請立即前往處置');
+        const combinedMsg = transportDest
+          ? `${baseActionText}（後送：${transportDest}）`
+          : baseActionText;
+
         if (finalCaseId && allCasesData[finalCaseId]) {
           const existingCase = allCasesData[finalCaseId];
           finalCaseCode = existingCase.caseCode;
           targetLat = existingCase.lat ?? null;
           targetLng = existingCase.lng ?? null;
-          finalMsg = msg || `支援案件 ${finalCaseCode}：${existingCase.summary}`;
+          finalMsg = combinedMsg;
+
+          if (transportDest) {
+            await db.ref(`${DB_ROOT}/cases/${finalCaseId}/transportDestination`).set(transportDest);
+          }
 
           await db.ref(`${DB_ROOT}/cases/${finalCaseId}/assignedUnits/${targetUid}`).set(targetName);
           await db.ref(`${DB_ROOT}/cases/${finalCaseId}/assignedDevices/${targetUid}`).set(`${targetName}[${targetDevCode}]`);
-          await appendCaseTimeline(finalCaseId, '🛡️ 救護總站', `➕ 增派支援車輛：${targetName}`, finalMsg);
+
+          const timelineAction = isRepeatSameCaseDispatch
+            ? `🔁 同案再次派遣：${targetName}`
+            : `➕ 增派支援車輛：${targetName}`;
+          await appendCaseTimeline(finalCaseId, '🛡️ 救護總站', timelineAction, finalMsg);
         } else {
-          if (!msg && !selectedDispatchCoords) {
-            alert('請輸入任務內容，或標定事故點座標！');
+          if (!msg && !selectedDispatchCoords && !transportDest) {
+            alert('請輸入任務內容、後送單位，或標定事故點座標！');
             btn.disabled = false;
             btn.textContent = '🚨 確認立案並派遣';
             return;
@@ -1868,7 +1983,9 @@
           finalCaseId = newCaseRef.key;
           targetLat = selectedDispatchCoords ? selectedDispatchCoords.lat : null;
           targetLng = selectedDispatchCoords ? selectedDispatchCoords.lng : null;
-          finalMsg = msg || '請立即前往地圖標定之事故點處置';
+          finalMsg = transportDest
+            ? `${msg || '請立即前往地圖標定之事故點處置'}（後送：${transportDest}）`
+            : (msg || '請立即前往地圖標定之事故點處置');
 
           await newCaseRef.set({
             caseId: finalCaseId,
@@ -1877,6 +1994,7 @@
             source: 'ADMIN_DISPATCH',
             creatorDeviceCode: `總站-${getShortDeviceCode()}`,
             summary: finalMsg,
+            transportDestination: transportDest || '',
             lat: targetLat,
             lng: targetLng,
             assignedUnits: { [targetUid]: targetName },
@@ -1894,6 +2012,7 @@
           targetUid: targetUid,
           targetName: targetName,
           message: finalMsg,
+          transportDestination: transportDest || '',
           targetLat: targetLat,
           targetLng: targetLng,
           acknowledged: false,
@@ -1946,14 +2065,22 @@
       db.ref(`${DB_ROOT}/dispatches/${currentUser.uid}`).on('value', (snapshot) => {
         const data = snapshot.val();
         if (!data || data.acknowledged) return;
-        // 即使誤關網頁重新登入，只要該派遣尚未確認就顯示（同一 dispatchId 若未確認亦保留彈窗能力）
         latestDispatchObj = data;
         const hasCoords = typeof data.targetLat === 'number' && typeof data.targetLng === 'number';
+        const effectiveDest = data.transportDestination || (data.caseId && allCasesData[data.caseId] ? allCasesData[data.caseId].transportDestination : '');
 
         document.getElementById('incomingCaseCode').textContent = data.caseCode || '#NEW';
         document.getElementById('incomingDispatchMessage').textContent = data.message;
         document.getElementById('incomingDispatchTime').textContent =
           `總站於 ${data.timestamp ? formatTime(data.timestamp) : '先前'} 發出派遣${data.dispatchId === lastHandledDispatchId ? '（尚未確認）' : ''}`;
+
+        const destBadge = document.getElementById('incomingTransportDestBadge');
+        if (effectiveDest) {
+          document.getElementById('incomingTransportDestText').textContent = effectiveDest;
+          destBadge.classList.remove('hidden');
+        } else {
+          destBadge.classList.add('hidden');
+        }
 
         document.getElementById('incomingDispatchCoordsBadge').classList.toggle('hidden', !hasCoords);
         document.getElementById('btnIncomingNav').classList.toggle('hidden', !hasCoords);
@@ -1983,7 +2110,7 @@
       });
 
       if (switchToDispatched) {
-        await applyRiderStatusChange('DISPATCHED', `接獲 ${disp.caseCode} 派遣：${disp.message}`);
+        await applyRiderStatusChange('DISPATCHED', `接獲 ${disp.caseCode} 派遣：${disp.message}`, disp.transportDestination || '');
       } else if (disp.caseId) {
         await appendCaseTimeline(disp.caseId, unitName, '👌 確認收到派遣通知', disp.message, getShortDeviceCode());
         await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({ activeCaseId: disp.caseId });
@@ -2221,7 +2348,7 @@
         `;
 
         const adminBtnHtml = selectedRole === 'dispatch'
-          ? `<button onclick="openAdminDispatchModal('${unit.uid}', false, '')"
+          ? `<button onclick="openAdminDispatchModal('${unit.uid}', false, '', false, '')"
               style="margin-top:6px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
               📢 立案派遣此車輛
              </button>`
@@ -2266,6 +2393,9 @@
 
       activeCases.forEach(c => {
         const unitsText = c.assignedUnits ? Object.values(c.assignedUnits).join('、') : '未指派';
+        const destLine = c.transportDestination
+          ? `<div style="font-size:11px; color:#0369a1; font-weight:700; margin-bottom:2px;">🏥 後送：${escapeHtml(c.transportDestination)}</div>`
+          : '';
         const iconHtml = `
           <div class="case-pin-wrapper">
             <div class="case-pin-badge">🚨 ${escapeHtml(c.caseCode)} 處理中</div>
@@ -2276,19 +2406,25 @@
         const adminBtns = selectedRole === 'dispatch'
           ? `<div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
                <div style="display:flex; gap:4px;">
-                 <button onclick="openRadioNoteModal('${c.caseId}')"
-                   style="flex:1; padding:5px 6px; background:#7e22ce; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
-                   🎙️ 無線電補述
+                 <button onclick="openAdminDispatchModal('', false, '${c.caseId}', true, '${escapeHtml(c.transportDestination || '')}')"
+                   style="flex:1; padding:5px 6px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
+                   🔁 同案派遣
                  </button>
-                 <button onclick="openAdminDispatchModal('', false, '${c.caseId}')"
+                 <button onclick="openAdminDispatchModal('', false, '${c.caseId}', false, '${escapeHtml(c.transportDestination || '')}')"
                    style="flex:1; padding:5px 6px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
                    ➕ 增派支援
                  </button>
                </div>
-               <button onclick="adminForceCloseCase('${c.caseId}')"
-                 style="width:100%; padding:5px 6px; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
-                 ✅ 總站結案
-               </button>
+               <div style="display:flex; gap:4px;">
+                 <button onclick="openRadioNoteModal('${c.caseId}')"
+                   style="flex:1; padding:5px 6px; background:#7e22ce; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
+                   🎙️ 無線電補述
+                 </button>
+                 <button onclick="adminForceCloseCase('${c.caseId}')"
+                   style="flex:1; padding:5px 6px; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
+                   ✅ 總站結案
+                 </button>
+               </div>
              </div>`
           : `<a href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}&travelmode=two-wheeler" target="_blank"
               style="display:block; text-align:center; margin-top:6px; padding:5px 8px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none;">
@@ -2299,6 +2435,7 @@
           <div style="color:#0f172a; min-width:215px;">
             <div style="font-weight:900; font-size:14px; color:#dc2626; margin-bottom:3px;">🚨 案件 ${escapeHtml(c.caseCode)}</div>
             <div style="font-size:12px; font-weight:700; margin-bottom:3px;">${escapeHtml(c.summary)}</div>
+            ${destLine}
             <div style="font-size:11px; color:#334155; margin-bottom:2px;"><b>出勤單位：</b>${escapeHtml(unitsText)}</div>
             <div style="font-size:11px; color:#64748b;"><b>立案時間：</b>${c.createdAt ? formatTime(c.createdAt) : '--:--'}</div>
             ${adminBtns}
@@ -2398,27 +2535,37 @@
               ${hasCoords ? `<button onclick="focusCaseOnMap('${c.caseId}')" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-[11px] text-amber-300 shrink-0">📍 定位</button>` : ''}
             </div>
 
-            <div class="text-xs text-slate-300 mb-2 flex items-center justify-between">
-              <span>🚑 參與單位：<b class="text-white">${escapeHtml(unitsList)}</b></span>
-              <span class="text-[11px] ${isActive ? 'text-red-400 font-bold' : 'text-emerald-400'}">${isActive ? '● 處理中' : '✓ 已結案'}</span>
+            <div class="text-xs text-slate-300 mb-1 flex items-center justify-between gap-2">
+              <span class="truncate">🚑 參與單位：<b class="text-white">${escapeHtml(unitsList)}</b></span>
+              <span class="text-[11px] shrink-0 ${isActive ? 'text-red-400 font-bold' : 'text-emerald-400'}">${isActive ? '● 處理中' : '✓ 已結案'}</span>
             </div>
+
+            ${c.transportDestination ? `
+              <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 rounded-lg px-2 py-1 mb-2">
+                🏥 後送醫院／後送總站：<b class="text-white">${escapeHtml(c.transportDestination)}</b>
+              </div>
+            ` : '<div class="mb-1"></div>'}
 
             <div class="bg-slate-900/80 rounded-lg p-2 space-y-0.5 mb-2">
               ${timelineHtml || '<div class="text-[11px] text-slate-500">無時間軸明細</div>'}
             </div>
 
             ${isActive ? `
-              <div class="grid grid-cols-3 gap-1.5 pt-1">
-                <button onclick="openRadioNoteModal('${c.caseId}')"
-                  class="py-1.5 px-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
-                  🎙️ 無線電補述
+              <div class="grid grid-cols-2 gap-1.5 pt-1">
+                <button onclick="openAdminDispatchModal('', false, '${c.caseId}', true, '${escapeHtml(c.transportDestination || '')}')"
+                  class="py-1.5 px-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold">
+                  🔁 同案派遣
                 </button>
-                <button onclick="openAdminDispatchModal('', false, '${c.caseId}')"
-                  class="py-1.5 px-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold">
+                <button onclick="openAdminDispatchModal('', false, '${c.caseId}', false, '${escapeHtml(c.transportDestination || '')}')"
+                  class="py-1.5 px-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold">
                   ➕ 增派支援
                 </button>
+                <button onclick="openRadioNoteModal('${c.caseId}')"
+                  class="py-1.5 px-2 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
+                  🎙️ 無線電補述
+                </button>
                 <button onclick="adminForceCloseCase('${c.caseId}')"
-                  class="py-1.5 px-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold">
+                  class="py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold">
                   ✅ 總站結案
                 </button>
               </div>
@@ -2555,7 +2702,7 @@
                 ${unackedBadgeHtml}
               </div>
               <div class="flex items-center gap-1 shrink-0">
-                <button onclick="openAdminDispatchModal('${u.uid}', false, '')"
+                <button onclick="openAdminDispatchModal('${u.uid}', false, '', false, '')"
                   class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
                   📢 派案
                 </button>
@@ -2617,12 +2764,13 @@
         return;
       }
 
-      let csvContent = '\uFEFF案件編號,案件狀態,立案時間,結案時間,案件摘要,參與單位(含裝置碼),緯度,經度,完整時間軸明細(含操作裝置碼稽核)\n';
+      let csvContent = '\uFEFF案件編號,案件狀態,立案時間,結案時間,案件摘要,後送醫院/後送總站,參與單位(含裝置碼),緯度,經度,完整時間軸明細(含操作裝置碼稽核)\n';
       cases.forEach(c => {
         const statusStr = c.status === 'ACTIVE' ? '進行中' : '已結案';
         const createdStr = c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW', { hour12: false }) : '';
         const closedStr = c.closedAt ? new Date(c.closedAt).toLocaleString('zh-TW', { hour12: false }) : '';
         const summary = `"${(c.summary || '').replace(/"/g, '""')}"`;
+        const dest = `"${(c.transportDestination || '').replace(/"/g, '""')}"`;
 
         const unitWithDev = c.assignedDevices
           ? Object.values(c.assignedDevices).join('、')
@@ -2636,7 +2784,7 @@
           return `[${ts}] ${t.actor}${devTag} ${t.action}${t.note ? `(${t.note})` : ''}`;
         }).join(' -> ');
 
-        csvContent += `${c.caseCode},${statusStr},${createdStr},${closedStr},${summary},${units},${c.lat || ''},${c.lng || ''},"${tlText.replace(/"/g, '""')}"\n`;
+        csvContent += `${c.caseCode},${statusStr},${createdStr},${closedStr},${summary},${dest},${units},${c.lat || ''},${c.lng || ''},"${tlText.replace(/"/g, '""')}"\n`;
       });
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2650,8 +2798,14 @@
 
     async function executeEndEventReset() {
       const pin = document.getElementById('endEventAdminPin').value.trim();
-      if (pin !== ADMIN_PASSWORD) {
-        alert('❌ 管理員密碼錯誤，無法執行清空！');
+      try {
+        const inputHash = await sha256Hex(pin);
+        if (inputHash !== ADMIN_PASSWORD_SHA256) {
+          alert('❌ 管理員密碼錯誤，無法執行清空！');
+          return;
+        }
+      } catch (err) {
+        alert('❌ 密碼驗證失敗：' + err.message);
         return;
       }
 
