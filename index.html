@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>馬拉松機動救護隊｜即時定位與勤務回報系統</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      height: 100dvh; /* 修正手機瀏覽器網址列遮擋問題 */
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    /* 自訂地圖標記樣式 */
+    .ems-marker-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+    }
+    .ems-marker-badge {
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
+      border: 2px solid #ffffff;
+      margin-bottom: 3px;
+    }
+    .ems-marker-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    /* 狀態顏色定義 */
+    .status-standby { background-color: #10b981; } /* 綠色：待命 */
+    .status-dispatched {
+      background-color: #ef4444;
+      animation: pulse-red 1.2s infinite;
+    } /* 紅色閃爍：出勤中 */
+    .status-arrived { background-color: #3b82f6; } /* 藍色：已到達 */
+    .status-offline { background-color: #64748b; opacity: 0.8; }
+
+    @keyframes pulse-red {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9); }
+      70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="flex flex-col" style="height: 100dvh;">
+
+  <!-- ==================== 1. 登入 / 身分選擇畫面 ==================== -->
+  <div id="setupModal" class="fixed inset-0 z-[2000] bg-slate-950/95 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-3xl">🚑</span>
+        <div>
+          <h1 class="text-xl font-bold text-white">馬拉松機動救護追蹤系統</h1>
+          <p class="text-xs text-slate-400">即時定位與勤務派遣回報平台</p>
+        </div>
+      </div>
+
+      <div class="mt-5 space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-slate-300 mb-2">1. 請選擇您的執勤身分：</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" id="btnSelectRider" onclick="selectRole('rider')"
+              class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
+              <div class="text-2xl mb-1">🏍️</div>
+              <div class="font-bold text-white">機車救護組</div>
+              <div class="text-xs text-slate-300 mt-0.5">前線定位與出勤回報</div>
+            </button>
+            <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
+              class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
+              <div class="text-2xl mb-1">🖥️</div>
+              <div class="font-bold text-white">救護總站</div>
+              <div class="text-xs text-slate-300 mt-0.5">監控全隊位置與紀錄</div>
+            </button>
+          </div>
+        </div>
+
+        <div id="riderInputGroup">
+          <label class="block text-sm font-semibold text-slate-300 mb-1">2. 輸入呼號 / 隊員姓名：</label>
+          <input type="text" id="inputUnitName" placeholder="例：機動1號 - 王小明"
+            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 text-base" />
+        </div>
+
+        <div id="authStatusBanner" class="text-xs text-amber-400 bg-amber-950/50 border border-amber-800/60 rounded-lg px-3 py-2">
+          ⏳ 正在連線至雲端伺服器...
+        </div>
+
+        <button type="button" id="btnStartSystem" onclick="startSystem()" disabled
+          class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold text-white text-base shadow-lg transition">
+          進入系統
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 2. 頂部狀態列 ==================== -->
+  <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between z-[1000] shrink-0">
+    <div class="flex items-center gap-2 min-w-0">
+      <span id="headerRoleBadge" class="px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0">
+        🏍️ 機車組
+      </span>
+      <span id="headerUnitName" class="font-bold text-sm md:text-base truncate text-white">未設定</span>
+    </div>
+
+    <div class="flex items-center gap-1.5 shrink-0">
+      <!-- 螢幕恆亮狀態指示 -->
+      <button id="btnWakeLock" onclick="toggleWakeLock()" title="點擊切換螢幕恆亮"
+        class="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-300 flex items-center gap-1">
+        <span id="wakeLockIcon">☀️</span>
+        <span id="wakeLockText" class="hidden sm:inline">恆亮已啟用</span>
+      </button>
+
+      <!-- GPS 訊號狀態 -->
+      <span id="gpsIndicator" class="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400">
+        📡 等待定位
+      </span>
+
+      <!-- 重新設定身分按鈕 -->
+      <button onclick="reopenSetup()" class="px-2 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+        切換
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== 3. 主工作區（地圖 + 側邊/底部面板） ==================== -->
+  <main class="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+
+    <!-- 地圖容器 -->
+    <div id="map" class="flex-1 h-full w-full z-0"></div>
+
+    <!-- 地圖右下角：回到我的位置按鈕 -->
+    <button onclick="centerToMe()" title="定位到我的位置"
+      class="absolute bottom-4 right-4 z-[900] bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-600 p-3 rounded-full shadow-xl">
+      🎯
+    </button>
+
+    <!-- ========== A. 機車救護組專屬底部操作面板 ========== -->
+    <div id="riderControlPanel" class="hidden bg-slate-900 border-t border-slate-700 p-3 pb-4 md:p-4 z-[1000] shrink-0">
+      <div class="max-w-2xl mx-auto">
+        <!-- 目前狀態與最新備註顯示 -->
+        <div class="flex items-center justify-between bg-slate-800/80 rounded-xl px-3 py-2 mb-2.5 border border-slate-700">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs text-slate-400 shrink-0">狀態：</span>
+            <span id="riderCurrentStatusBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold status-standby text-white shrink-0">
+              🟢 待命巡邏
+            </span>
+            <span id="riderLastNote" class="text-xs text-slate-300 truncate"></span>
+          </div>
+          <span id="riderLastTime" class="text-xs text-slate-400 font-mono shrink-0 ml-2">--:--:--</span>
+        </div>
+
+        <!-- 兩大核心按鈕：出勤 / 到達 -->
+        <div class="grid grid-cols-2 gap-3">
+          <button id="btnActionDispatch" onclick="openReportModal('DISPATCHED')"
+            class="py-3.5 px-3 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-red-950/50 flex flex-col items-center justify-center transition">
+            <span>🚨 出勤</span>
+            <span class="text-xs font-normal text-red-100 mt-0.5">前往事故點 / 支援</span>
+          </button>
+
+          <button id="btnActionArrive" onclick="openReportModal('ARRIVED')"
+            class="py-3.5 px-3 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-blue-950/50 flex flex-col items-center justify-center transition">
+            <span>🏥 到達</span>
+            <span class="text-xs font-normal text-blue-100 mt-0.5">抵達現場 / 接觸傷患</span>
+          </button>
+        </div>
+
+        <!-- 恢復待命按鈕（在出勤或到達狀態時顯示） -->
+        <button id="btnActionStandby" onclick="openReportModal('STANDBY')"
+          class="hidden w-full mt-2.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-sm transition">
+          ✅ 任務結束，恢復「待命巡邏」狀態
+        </button>
+      </div>
+    </div>
+
+    <!-- ========== B. 救護總站專屬監控側邊欄 / 底部面板 ========== -->
+    <aside id="dispatchDashboard" class="hidden w-full md:w-[430px] h-[46dvh] md:h-full bg-slate-900 border-t md:border-t-0 md:border-l border-slate-700 flex flex-col z-[1000] shrink-0">
+      <!-- 分頁切換與匯出/清空工具 -->
+      <div class="flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800 shrink-0 gap-1">
+        <div class="flex gap-1">
+          <button id="tabUnits" onclick="switchDispatchTab('units')"
+            class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white">
+            🏍️ 機車 (<span id="onlineCount">0</span>)
+          </button>
+          <button id="tabLogs" onclick="switchDispatchTab('logs')"
+            class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700">
+            📋 時間軸 (<span id="logCount">0</span>)
+          </button>
+        </div>
+        <div class="flex gap-1">
+          <button onclick="exportLogsCSV()" title="匯出 Excel CSV 紀錄表"
+            class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 border border-emerald-600/50">
+            📥 匯出
+          </button>
+          <button onclick="clearAllTestData()" title="清空所有測試資料"
+            class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-900/80 text-slate-300 hover:text-red-200 border border-slate-700">
+            🗑️
+          </button>
+        </div>
+      </div>
+
+      <!-- 頁籤 1：各機車組即時狀態列表 -->
+      <div id="panelUnits" class="flex-1 overflow-y-auto p-3 space-y-2.5">
+        <div class="text-center text-slate-500 text-sm py-8">目前尚無機車組上線...</div>
+      </div>
+
+      <!-- 頁籤 2：即時勤務回報時間軸 -->
+      <div id="panelLogs" class="hidden flex-1 overflow-y-auto p-3 space-y-2">
+        <div class="text-center text-slate-500 text-sm py-8">尚無勤務回報紀錄</div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ==================== 4. 勤務回報補述對話框 (Modal) ==================== -->
+  <div id="reportModal" class="hidden fixed inset-0 z-[2500] bg-black/80 flex items-end sm:items-center justify-center p-3">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <h3 id="reportModalTitle" class="text-lg font-black text-white">🚨 回報「出勤」</h3>
+        <button onclick="closeReportModal()" class="text-slate-400 hover:text-white text-xl px-2">✕</button>
+      </div>
+
+      <p class="text-xs text-slate-400 mb-3">可點擊下方快捷標籤，或直接輸入現場補充說明（非必填）：</p>
+
+      <!-- 快捷標籤區（依狀態動態切換） -->
+      <div id="quickTagsContainer" class="flex flex-wrap gap-2 mb-3"></div>
+
+      <!-- 補充說明輸入框 -->
+      <textarea id="reportNoteInput" rows="3" placeholder="輸入公里數、選手狀況、是否需支援救護車..."
+        class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-4"></textarea>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button type="button" onclick="closeReportModal()"
+          class="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm">
+          取消
+        </button>
+        <button type="button" id="btnConfirmReport" onclick="submitStatusReport()"
+          class="py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm shadow-lg">
+          確認送出回報
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== JavaScript 邏輯區 ==================== -->
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Firebase SDK (Compat v10) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script>
+    // =========================================================================
+    // 1. FIREBASE 設定區（請替換為你現有的 firebaseConfig）
+    // =========================================================================
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // 獨立資料庫節點路徑（與你原本的追蹤工具完全隔離，可共用同一個 Firebase 專案）
+    const DB_ROOT = 'marathon_ems_tracker';
+
+    // =========================================================================
+    // 2. 全域變數與狀態管理
+    // =========================================================================
+    let auth = null;
+    let db = null;
+    let currentUser = null;
+    let selectedRole = localStorage.getItem('ems_role') || 'rider';
+    let unitName = localStorage.getItem('ems_unit_name') || '';
+    let currentStatus = 'STANDBY';
+    let pendingActionStatus = null;
+    let isSubmitting = false; // 防止連點重複送出
+
+    let map = null;
+    let myMarker = null;
+    let myCoords = null;
+    let watchId = null;
+    let wakeLock = null;
+    let isSystemStarted = false;
+
+    const unitMarkers = {};
+    let allUnitsData = {};
+    let allLogsData = [];
+
+    const STATUS_META = {
+      STANDBY:    { label: '🟢 待命巡邏', short: '待命', class: 'status-standby',    btnColor: 'bg-emerald-600 hover:bg-emerald-500' },
+      DISPATCHED: { label: '🚨 出勤趕赴', short: '出勤', class: 'status-dispatched', btnColor: 'bg-red-600 hover:bg-red-500' },
+      ARRIVED:    { label: '🏥 到達現場', short: '到達', class: 'status-arrived',    btnColor: 'bg-blue-600 hover:bg-blue-500' }
+    };
+
+    const QUICK_TAGS = {
+      DISPATCHED: ['接獲大會通報出勤', '巡邏發現選手倒地', '前往賽道折返點', '支援前方救護組', '攜帶AED前往'],
+      ARRIVED:    ['已接觸選手評估中', '肌肉抽筋/噴劑處置', '擦挫傷/簡易包紮', '疑似熱衰竭/降溫中', '意識不清/請求救護車後送'],
+      STANDBY:    ['處置完畢選手續跑', '已交接救護車後送', '選手棄賽已上收容車', '誤觸恢復待命']
+    };
+
+    // =========================================================================
+    // 3. 初始化地圖（Leaflet + 台灣國土測繪中心圖磚）
+    // =========================================================================
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: false
+      }).setView([23.0000, 120.2000], 14);
+
+      L.control.zoom({ position: 'topleft' }).addTo(map);
+
+      L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '&copy; 內政部國土測繪中心',
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    // =========================================================================
+    // 4. 螢幕恆亮功能 (Screen Wake Lock API)
+    // =========================================================================
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) {
+        updateWakeLockUI(false, '不支援恆亮');
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        updateWakeLockUI(true, '螢幕恆亮中');
+        wakeLock.addEventListener('release', () => {
+          wakeLock = null;
+          updateWakeLockUI(false, '恆亮已暫停');
+        });
+      } catch (err) {
+        console.warn('Wake Lock 請求失敗:', err);
+        updateWakeLockUI(false, '點擊啟用恆亮');
+      }
+    }
+
+    async function toggleWakeLock() {
+      if (wakeLock !== null) {
+        await wakeLock.release();
+        wakeLock = null;
+      } else {
+        await requestWakeLock();
+      }
+    }
+
+    function updateWakeLockUI(isActive, text) {
+      const btn = document.getElementById('btnWakeLock');
+      const icon = document.getElementById('wakeLockIcon');
+      const label = document.getElementById('wakeLockText');
+      label.textContent = text;
+      if (isActive) {
+        icon.textContent = '☀️';
+        btn.className = 'px-2 py-1 rounded-lg text-xs font-semibold bg-amber-950/70 border border-amber-500/60 text-amber-300 flex items-center gap-1';
+      } else {
+        icon.textContent = '🌙';
+        btn.className = 'px-2 py-1 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-400 flex items-center gap-1';
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isSystemStarted) {
+        requestWakeLock();
+      }
+    });
+
+    // =========================================================================
+    // 5. Firebase 初始化與 Anonymous Auth
+    // =========================================================================
+    function initFirebase() {
+      const banner = document.getElementById('authStatusBanner');
+
+      // 防呆：檢查是否尚未替換預設 firebaseConfig
+      if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY') {
+        banner.className = 'text-xs text-red-400 bg-red-950/60 border border-red-700 rounded-lg px-3 py-2 font-semibold';
+        banner.textContent = '⚠️ 尚未設定 firebaseConfig！請在程式碼第 273 行填入你的 Firebase 金鑰。';
+        return;
+      }
+
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        auth = firebase.auth();
+        db = firebase.database();
+
+        auth.signInAnonymously()
+          .then((userCredential) => {
+            currentUser = userCredential.user;
+            banner.className = 'text-xs text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 rounded-lg px-3 py-2';
+            banner.textContent = `✅ 雲端連線成功 (裝置碼: ${currentUser.uid.slice(0, 6)})`;
+            document.getElementById('btnStartSystem').disabled = false;
+          })
+          .catch((error) => {
+            console.error('Firebase Auth 錯誤:', error);
+            banner.className = 'text-xs text-red-400 bg-red-950/50 border border-red-800/60 rounded-lg px-3 py-2';
+            banner.textContent = `❌ 匿名登入失敗，請確認 Firebase 後台已開啟 Anonymous 登入：${error.message}`;
+          });
+      } catch (err) {
+        banner.className = 'text-xs text-red-400 bg-red-950/50 border border-red-800/60 rounded-lg px-3 py-2';
+        banner.textContent = `❌ Firebase 初始化錯誤：${err.message}`;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      initFirebase();
+      selectRole(selectedRole);
+      if (unitName) {
+        document.getElementById('inputUnitName').value = unitName;
+      }
+    });
+
+    function selectRole(role) {
+      selectedRole = role;
+      const btnRider = document.getElementById('btnSelectRider');
+      const btnDispatch = document.getElementById('btnSelectDispatch');
+      const inputGroup = document.getElementById('riderInputGroup');
+
+      if (role === 'rider') {
+        btnRider.className = 'role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition';
+        btnDispatch.className = 'role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500';
+        inputGroup.classList.remove('hidden');
+      } else {
+        btnDispatch.className = 'role-btn p-4 rounded-xl border-2 border-blue-500 bg-blue-950/40 text-left transition';
+        btnRider.className = 'role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500';
+        inputGroup.classList.add('hidden');
+      }
+    }
+
+    function reopenSetup() {
+      document.getElementById('setupModal').classList.remove('hidden');
+    }
+
+    async function startSystem() {
+      if (selectedRole === 'rider') {
+        const inputVal = document.getElementById('inputUnitName').value.trim();
+        if (!inputVal) {
+          alert('請輸入您的呼號或姓名（例如：機動1號 - 王小明）');
+          return;
+        }
+        unitName = inputVal;
+        localStorage.setItem('ems_unit_name', unitName);
+      } else {
+        unitName = '救護指揮總站';
+      }
+
+      isSystemStarted = true;
+      localStorage.setItem('ems_role', selectedRole);
+      document.getElementById('setupModal').classList.add('hidden');
+
+      const roleBadge = document.getElementById('headerRoleBadge');
+      document.getElementById('headerUnitName').textContent = unitName;
+
+      requestWakeLock();
+      startGPSTracking();
+      listenToUnits();
+
+      if (selectedRole === 'rider') {
+        roleBadge.textContent = '🏍️ 機車組';
+        roleBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-600 text-white shrink-0';
+        document.getElementById('riderControlPanel').classList.remove('hidden');
+        document.getElementById('dispatchDashboard').classList.add('hidden');
+
+        // 檢查雲端是否已有此裝置的既有狀態（防止重新整理網頁時狀態被洗掉）
+        const snap = await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).once('value');
+        const existing = snap.val();
+        if (existing && existing.status) {
+          currentStatus = existing.status;
+          syncLocalRiderUI(currentStatus, existing.lastNote || '', existing.lastActionTime || Date.now());
+          db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({
+            name: unitName,
+            isOffline: false,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+        } else {
+          currentStatus = 'STANDBY';
+          syncLocalRiderUI('STANDBY', '上線待命', Date.now());
+          db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update({
+            uid: currentUser.uid,
+            name: unitName,
+            status: 'STANDBY',
+            lastNote: '上線待命',
+            lastActionTime: Date.now(),
+            isOffline: false,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+          writeLogRecord('ONLINE', '機車救護組上線待命');
+        }
+      } else {
+        roleBadge.textContent = '🖥️ 總站監控';
+        roleBadge.className = 'px-2.5 py-1 rounded-md text-xs font-bold bg-blue-600 text-white shrink-0';
+        document.getElementById('riderControlPanel').classList.add('hidden');
+        document.getElementById('dispatchDashboard').classList.remove('hidden');
+
+        // 若原本身分是機車組切換成總站，移除自己的機車標記以免誤導
+        if (currentUser) {
+          db.ref(`${DB_ROOT}/units/${currentUser.uid}`).remove();
+        }
+        listenToLogs();
+      }
+
+      setTimeout(() => map.invalidateSize(), 250);
+    }
+
+    // =========================================================================
+    // 6. GPS 連續定位與即時同步上傳
+    // =========================================================================
+    function startGPSTracking() {
+      if (!('geolocation' in navigator)) {
+        document.getElementById('gpsIndicator').textContent = '❌ 無 GPS';
+        return;
+      }
+
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+
+      let isFirstFix = true;
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy, speed } = pos.coords;
+          myCoords = { lat: latitude, lng: longitude };
+
+          const gpsEl = document.getElementById('gpsIndicator');
+          gpsEl.textContent = `📡 ±${Math.round(accuracy)}m`;
+          gpsEl.className = 'px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/60';
+
+          if (isFirstFix) {
+            map.setView([latitude, longitude], 16);
+            isFirstFix = false;
+          }
+
+          if (selectedRole === 'rider' && currentUser) {
+            const unitRef = db.ref(`${DB_ROOT}/units/${currentUser.uid}`);
+            unitRef.update({
+              uid: currentUser.uid,
+              name: unitName,
+              lat: latitude,
+              lng: longitude,
+              speed: speed ? Math.round(speed * 3.6) : 0,
+              status: currentStatus,
+              isOffline: false,
+              updatedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            unitRef.onDisconnect().update({
+              isOffline: true,
+              updatedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+          } else if (selectedRole === 'dispatch') {
+            if (!myMarker) {
+              myMarker = L.marker([latitude, longitude], {
+                icon: L.divIcon({
+                  className: '',
+                  html: `<div class="ems-marker-wrapper">
+                          <div class="ems-marker-badge bg-purple-700">🏥 總站位置</div>
+                          <div class="ems-marker-dot bg-purple-600">⛺</div>
+                        </div>`
+                })
+              }).addTo(map);
+            } else {
+              myMarker.setLatLng([latitude, longitude]);
+            }
+          }
+        },
+        (err) => {
+          console.warn('GPS 錯誤:', err);
+          const gpsEl = document.getElementById('gpsIndicator');
+          gpsEl.textContent = '⚠️ GPS 訊號弱';
+          gpsEl.className = 'px-2 py-1 rounded-lg text-xs font-semibold bg-red-950 text-red-400';
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 3000,
+          timeout: 10000
+        }
+      );
+    }
+
+    function centerToMe() {
+      if (myCoords) {
+        map.flyTo([myCoords.lat, myCoords.lng], 17);
+      } else {
+        alert('尚未取得您的 GPS 座標，請確認手機定位權限已開啟。');
+      }
+    }
+
+    // =========================================================================
+    // 7. 機車組：狀態回報對話框與寫入 Firebase（含防連點鎖定）
+    // =========================================================================
+    function openReportModal(targetStatus) {
+      pendingActionStatus = targetStatus;
+      const modal = document.getElementById('reportModal');
+      const titleEl = document.getElementById('reportModalTitle');
+      const confirmBtn = document.getElementById('btnConfirmReport');
+      const tagsContainer = document.getElementById('quickTagsContainer');
+      const noteInput = document.getElementById('reportNoteInput');
+
+      noteInput.value = '';
+      const meta = STATUS_META[targetStatus];
+      titleEl.textContent = `回報狀態：${meta.label}`;
+      confirmBtn.className = `py-3 rounded-xl text-white font-bold text-sm shadow-lg ${meta.btnColor}`;
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '確認送出回報';
+
+      tagsContainer.innerHTML = '';
+      (QUICK_TAGS[targetStatus] || []).forEach(tagText => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = `+ ${tagText}`;
+        btn.className = 'px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition';
+        btn.onclick = () => {
+          noteInput.value = noteInput.value ? `${noteInput.value}；${tagText}` : tagText;
+        };
+        tagsContainer.appendChild(btn);
+      });
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeReportModal() {
+      document.getElementById('reportModal').classList.add('hidden');
+      pendingActionStatus = null;
+      isSubmitting = false;
+    }
+
+    async function submitStatusReport() {
+      if (!pendingActionStatus || !currentUser || isSubmitting) return;
+      isSubmitting = true;
+
+      const confirmBtn = document.getElementById('btnConfirmReport');
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '傳送中...';
+
+      try {
+        const note = document.getElementById('reportNoteInput').value.trim();
+        currentStatus = pendingActionStatus;
+        const nowMs = Date.now();
+
+        const updatePayload = {
+          uid: currentUser.uid,
+          name: unitName,
+          status: currentStatus,
+          lastNote: note || `回報${STATUS_META[currentStatus].short}`,
+          lastActionTime: nowMs,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP,
+          isOffline: false
+        };
+        if (myCoords) {
+          updatePayload.lat = myCoords.lat;
+          updatePayload.lng = myCoords.lng;
+        }
+
+        await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).update(updatePayload);
+        await writeLogRecord(currentStatus, note);
+
+        syncLocalRiderUI(currentStatus, note, nowMs);
+        closeReportModal();
+      } catch (err) {
+        alert('回報傳送失敗，請檢查網路連線：' + err.message);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = '確認送出回報';
+        isSubmitting = false;
+      }
+    }
+
+    function syncLocalRiderUI(status, note, timestampMs) {
+      const badge = document.getElementById('riderCurrentStatusBadge');
+      const meta = STATUS_META[status] || STATUS_META.STANDBY;
+      badge.textContent = meta.label;
+      badge.className = `px-2.5 py-0.5 rounded-full text-xs font-bold text-white shrink-0 ${meta.class}`;
+      document.getElementById('riderLastNote').textContent = note ? `(${note})` : '';
+      document.getElementById('riderLastTime').textContent = formatTime(timestampMs);
+
+      const standbyBtn = document.getElementById('btnActionStandby');
+      if (status === 'DISPATCHED' || status === 'ARRIVED') {
+        standbyBtn.classList.remove('hidden');
+      } else {
+        standbyBtn.classList.add('hidden');
+      }
+    }
+
+    function writeLogRecord(actionCode, note) {
+      if (!currentUser) return Promise.resolve();
+      return db.ref(`${DB_ROOT}/logs`).push({
+        uid: currentUser.uid,
+        name: unitName,
+        action: actionCode,
+        note: note || '',
+        lat: myCoords ? myCoords.lat : null,
+        lng: myCoords ? myCoords.lng : null,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+      });
+    }
+
+    // =========================================================================
+    // 8. 監聽全隊座標與狀態（地圖渲染 + 總站面板更新）
+    // =========================================================================
+    function listenToUnits() {
+      db.ref(`${DB_ROOT}/units`).on('value', (snapshot) => {
+        allUnitsData = snapshot.val() || {};
+        renderMapMarkers();
+        if (selectedRole === 'dispatch') {
+          renderDispatchUnitList();
+        }
+      });
+    }
+
+    function renderMapMarkers() {
+      const activeUids = new Set(Object.keys(allUnitsData));
+
+      Object.keys(unitMarkers).forEach(uid => {
+        if (!activeUids.has(uid)) {
+          map.removeLayer(unitMarkers[uid]);
+          delete unitMarkers[uid];
+        }
+      });
+
+      Object.values(allUnitsData).forEach(unit => {
+        if (typeof unit.lat !== 'number' || typeof unit.lng !== 'number') return;
+
+        const meta = STATUS_META[unit.status] || STATUS_META.STANDBY;
+        const badgeColorClass = unit.isOffline ? 'status-offline' : meta.class;
+        const timeStr = unit.updatedAt ? formatTime(unit.updatedAt) : '--:--';
+        // 出勤中的標記層級自動拉高，避免被其他圖示蓋住
+        const zOffset = unit.status === 'DISPATCHED' ? 900 : (unit.status === 'ARRIVED' ? 500 : 100);
+
+        const iconHtml = `
+          <div class="ems-marker-wrapper">
+            <div class="ems-marker-badge ${badgeColorClass}">
+              ${escapeHtml(unit.name)} · ${meta.short}
+            </div>
+            <div class="ems-marker-dot ${badgeColorClass}">
+              🏍️
+            </div>
+          </div>
+        `;
+
+        const popupHtml = `
+          <div style="color:#0f172a; min-width:190px;">
+            <div style="font-weight:800; font-size:14px; margin-bottom:4px;">${escapeHtml(unit.name)}</div>
+            <div style="font-size:12px; margin-bottom:2px;"><b>狀態：</b>${meta.label}</div>
+            <div style="font-size:12px; margin-bottom:2px;"><b>最新回報：</b>${escapeHtml(unit.lastNote || '無')}</div>
+            <div style="font-size:11px; color:#475569;"><b>GPS 更新：</b>${timeStr} (${unit.speed || 0} km/h)</div>
+          </div>
+        `;
+
+        if (unitMarkers[unit.uid]) {
+          unitMarkers[unit.uid].setLatLng([unit.lat, unit.lng]);
+          unitMarkers[unit.uid].setZIndexOffset(zOffset);
+          unitMarkers[unit.uid].setIcon(L.divIcon({ className: '', html: iconHtml }));
+          unitMarkers[unit.uid].setPopupContent(popupHtml);
+        } else {
+          const marker = L.marker([unit.lat, unit.lng], {
+            zIndexOffset: zOffset,
+            icon: L.divIcon({ className: '', html: iconHtml })
+          }).addTo(map);
+          marker.bindPopup(popupHtml);
+          unitMarkers[unit.uid] = marker;
+        }
+      });
+    }
+
+    // =========================================================================
+    // 9. 救護總站專屬面板渲染、時間軸與清理工具
+    // =========================================================================
+    function switchDispatchTab(tab) {
+      const tabUnits = document.getElementById('tabUnits');
+      const tabLogs = document.getElementById('tabLogs');
+      const panelUnits = document.getElementById('panelUnits');
+      const panelLogs = document.getElementById('panelLogs');
+
+      if (tab === 'units') {
+        tabUnits.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white';
+        tabLogs.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700';
+        panelUnits.classList.remove('hidden');
+        panelLogs.classList.add('hidden');
+      } else {
+        tabLogs.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white';
+        tabUnits.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700';
+        panelLogs.classList.remove('hidden');
+        panelUnits.classList.add('hidden');
+      }
+    }
+
+    function renderDispatchUnitList() {
+      const container = document.getElementById('panelUnits');
+      const units = Object.values(allUnitsData);
+      document.getElementById('onlineCount').textContent = units.length;
+
+      if (units.length === 0) {
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">目前尚無機車組上線...</div>';
+        return;
+      }
+
+      const priority = { DISPATCHED: 1, ARRIVED: 2, STANDBY: 3 };
+      units.sort((a, b) => (priority[a.status] || 9) - (priority[b.status] || 9));
+
+      container.innerHTML = units.map(u => {
+        const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
+        const secAgo = u.updatedAt ? Math.max(0, Math.floor((Date.now() - u.updatedAt) / 1000)) : 999;
+        const isStale = secAgo > 60 || u.isOffline;
+        const actionTimeStr = u.lastActionTime ? formatTime(u.lastActionTime) : '--:--:--';
+
+        return `
+          <div onclick="focusUnit('${u.uid}')"
+            class="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-800 border ${u.status === 'DISPATCHED' ? 'border-red-500/70' : 'border-slate-700'} cursor-pointer transition">
+            <div class="flex items-center justify-between mb-1.5">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="font-bold text-white text-sm truncate">${escapeHtml(u.name)}</span>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${meta.class}">
+                  ${meta.label}
+                </span>
+              </div>
+              <span class="text-[11px] shrink-0 ml-1 ${isStale ? 'text-amber-400 font-bold' : 'text-slate-400'}">
+                ${isStale ? `⚠️ ${secAgo}秒前` : `🟢 ${secAgo}秒前`}
+              </span>
+            </div>
+            <div class="text-xs text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
+              <span class="truncate">📝 ${escapeHtml(u.lastNote || '待命巡邏中')}</span>
+              <span class="text-[11px] text-slate-400 font-mono shrink-0">${actionTimeStr}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function focusUnit(uid) {
+      const unit = allUnitsData[uid];
+      if (unit && typeof unit.lat === 'number' && typeof unit.lng === 'number') {
+        map.flyTo([unit.lat, unit.lng], 17);
+        if (unitMarkers[uid]) {
+          // 置頂並開啟氣泡框
+          Object.values(unitMarkers).forEach(m => m.setZIndexOffset(100));
+          unitMarkers[uid].setZIndexOffset(1000);
+          unitMarkers[uid].openPopup();
+        }
+      } else {
+        alert('該同仁尚未回傳有效 GPS 座標');
+      }
+    }
+
+    function listenToLogs() {
+      db.ref(`${DB_ROOT}/logs`).limitToLast(200).on('value', (snapshot) => {
+        const val = snapshot.val() || {};
+        allLogsData = Object.values(val).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        document.getElementById('logCount').textContent = allLogsData.length;
+        renderDispatchLogs();
+      });
+    }
+
+    function renderDispatchLogs() {
+      const container = document.getElementById('panelLogs');
+      if (allLogsData.length === 0) {
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">尚無勤務回報紀錄</div>';
+        return;
+      }
+
+      const actionLabels = {
+        ONLINE:     { text: '🟢 上線待命', color: 'text-emerald-400' },
+        STANDBY:    { text: '✅ 恢復待命', color: 'text-emerald-400' },
+        DISPATCHED: { text: '🚨 回報出勤', color: 'text-red-400' },
+        ARRIVED:    { text: '🏥 到達現場', color: 'text-blue-400' }
+      };
+
+      container.innerHTML = allLogsData.map(log => {
+        const act = actionLabels[log.action] || { text: log.action, color: 'text-slate-300' };
+        const timeStr = log.timestamp ? formatTime(log.timestamp) : '--:--:--';
+        return `
+          <div class="p-2.5 rounded-lg bg-slate-800/70 border border-slate-700/80 text-xs">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-bold text-white">${escapeHtml(log.name)} <span class="${act.color} ml-1">${act.text}</span></span>
+              <span class="text-slate-400 font-mono">${timeStr}</span>
+            </div>
+            ${log.note ? `<div class="text-slate-300 pl-2 border-l-2 border-slate-500 mt-1">${escapeHtml(log.note)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function exportLogsCSV() {
+      if (allLogsData.length === 0) {
+        alert('目前沒有可匯出的勤務紀錄');
+        return;
+      }
+      const actionMap = { ONLINE: '上線', STANDBY: '恢復待命', DISPATCHED: '出勤', ARRIVED: '到達' };
+      let csvContent = '\uFEFF時間,呼號/隊員,動作狀態,補充備註,緯度,經度\n';
+
+      [...allLogsData].reverse().forEach(log => {
+        const t = log.timestamp ? new Date(log.timestamp).toLocaleString('zh-TW', { hour12: false }) : '';
+        const name = `"${(log.name || '').replace(/"/g, '""')}"`;
+        const act = actionMap[log.action] || log.action;
+        const note = `"${(log.note || '').replace(/"/g, '""')}"`;
+        csvContent += `${t},${name},${act},${note},${log.lat || ''},${log.lng || ''}\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `馬拉松救護勤務紀錄_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function clearAllTestData() {
+      if (!confirm('確定要清空雲端所有的「機車定位」與「通報時間軸」紀錄嗎？（建議僅在賽前測試完畢時使用）')) {
+        return;
+      }
+      await db.ref(`${DB_ROOT}`).remove();
+      alert('已清空所有紀錄！');
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return d.toTimeString().slice(0, 8);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    setInterval(() => {
+      if (selectedRole === 'dispatch') {
+        renderDispatchUnitList();
+      }
+    }, 10000);
+  </script>
+</body>
+</html>
