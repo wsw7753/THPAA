@@ -175,7 +175,7 @@
               class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
               <div class="text-2xl mb-1">🏍️</div>
               <div class="font-bold text-white">一般用戶</div>
-              <div class="text-xs text-slate-300 mt-0.5">機巡01~15 / 救護車91~95</div>
+              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站</div>
             </button>
             <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
               class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
@@ -938,13 +938,14 @@
     // =========================================================================
     // 3. 初始化車輛下拉選單（機巡01~15、救護車91~95）並鎖定已佔用車號
     // =========================================================================
-    function populateCallsignDropdown() {
+function populateCallsignDropdown() {
       const sel = document.getElementById('selectVehicleCallsign');
       const occupiedSet = getOccupiedCallsignsSet();
 
       const allCodes = [];
       for (let i = 1; i <= 15; i++) allCodes.push(`機巡${String(i).padStart(2, '0')}`);
       for (let i = 91; i <= 95; i++) allCodes.push(`救護車${i}`);
+      for (let i = 2; i <= 5; i++) allCodes.push(`第${i}救護站`);
 
       let targetSelect = sel.value || savedCallsign;
       if (occupiedSet.has(targetSelect)) {
@@ -968,6 +969,16 @@
         const isTaken = occupiedSet.has(code);
         html += `<option value="${code}" ${isTaken ? 'disabled' : ''} ${code === targetSelect && !isTaken ? 'selected' : ''}>
           ${isTaken ? `🚫 ${code} (已被執勤佔用)` : `🚑 ${code}`}
+        </option>`;
+      }
+      html += '</optgroup>';
+
+      html += '<optgroup label="🏥 固定救護站（第2救護站 ~ 第5救護站）">';
+      for (let i = 2; i <= 5; i++) {
+        const code = `第${i}救護站`;
+        const isTaken = occupiedSet.has(code);
+        html += `<option value="${code}" ${isTaken ? 'disabled' : ''} ${code === targetSelect && !isTaken ? 'selected' : ''}>
+          ${isTaken ? `🚫 ${code} (已被執勤佔用)` : `🏥 ${code}`}
         </option>`;
       }
       html += '</optgroup>';
@@ -1284,7 +1295,9 @@
         localStorage.setItem('ems_callsign', callsign);
         localStorage.setItem('ems_person_name', person);
 
-        vehicleType = callsign.startsWith('救護車') ? 'AMBULANCE' : 'MOTO';
+vehicleType = callsign.startsWith('救護車')
+          ? 'AMBULANCE'
+          : (callsign.includes('救護站') ? 'STATION' : 'MOTO');
         unitName = person ? `${callsign} (${person})` : callsign;
       } else {
         const pinVal = document.getElementById('inputAdminPin').value.trim();
@@ -2547,8 +2560,9 @@
         const meta = STATUS_META[unit.status] || STATUS_META.STANDBY;
         const badgeColorClass = unit.isOffline ? 'status-offline' : meta.class;
         const timeStr = unit.updatedAt ? formatTime(unit.updatedAt) : '--:--';
-        const isAmb = unit.vehicleType === 'AMBULANCE';
-        const vehIcon = isAmb ? '🚑' : '🏍️';
+const isAmb = unit.vehicleType === 'AMBULANCE';
+        const isStation = unit.vehicleType === 'STATION';
+        const vehIcon = isAmb ? '🚑' : (isStation ? '🏥' : '🏍️');
         const dotExtraClass = isAmb ? 'ems-marker-ambulance' : '';
         const zOffset = unit.status === 'DISPATCHED' ? 900 : (unit.status === 'ARRIVED' ? 500 : 100);
         const boundCase = unit.activeCaseId && allCasesData[unit.activeCaseId] ? allCasesData[unit.activeCaseId].caseCode : '';
@@ -2944,7 +2958,7 @@
         const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
         const secAgo = u.updatedAt ? Math.max(0, Math.floor((Date.now() - u.updatedAt) / 1000)) : 999;
         const isStale = secAgo > 60 || u.isOffline;
-        const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : '🏍️';
+const vehIcon = u.vehicleType === 'AMBULANCE' ? '🚑' : (u.vehicleType === 'STATION' ? '🏥' : '🏍️');
         const caseCode = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId].caseCode : '';
 
         const disp = allDispatchesData[u.uid];
