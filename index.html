@@ -2633,9 +2633,14 @@
       await appendTimelineEvent(caseId, '救護總站', '🔄 重新開啟案件', '案件重新列管追蹤');
     }
 
-    async function adminKickUnit(uid, unitDisplayName) {
+async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
       if (!isSuperAdmin()) {
-        alert('⛔ 「踢除 / 強制登出」僅限最高權限管理員執行。');
+        alert('⛔ 「踢除 / 移除」僅限最高權限管理員執行。');
+        return;
+      }
+      if (!isCurrentlyOnline) {
+        if (!confirm(`確定要移除已離線的「${unitDisplayName}」紀錄嗎？`)) return;
+        await db.ref(`${DB_ROOT}/units/${uid}`).remove();
         return;
       }
       if (!confirm(`確定要強制將「${unitDisplayName}」登出並釋放該車號嗎？\n（若該裝置仍在線上，系統將自動中斷其 GPS 追蹤並退回登入畫面）`)) return;
@@ -3517,7 +3522,7 @@
 
           <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-700/70 gap-1">
             <span class="text-[11px] text-slate-400 font-mono">更新：${timeStr}</span>
-            <div class="flex items-center gap-1.5">
+       <div class="flex items-center gap-1.5">
               ${(isOnline && typeof u.lat === 'number') ? `
                 <button onclick="focusLocation(${u.lat}, ${u.lng})"
                   class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white font-semibold">
@@ -3540,12 +3545,12 @@
                     📢 派案
                   </button>
                 `}
-                ${superMode ? `
-                  <button onclick="adminKickUnit('${u.uid}', '${escapeHtml(u.name)}')" title="強制登出並釋放此編號（僅最高權限）"
-                    class="px-2 py-1 rounded bg-rose-900/80 hover:bg-rose-700 text-rose-200 text-xs font-semibold">
-                    踢除
-                  </button>
-                ` : ''}
+              ` : ''}
+              ${superMode ? `
+                <button onclick="adminKickUnit('${u.uid}', '${escapeHtml(u.name)}', ${isOnline})" title="強制登出並移除此單位紀錄（僅最高權限）"
+                  class="px-2 py-1 rounded bg-rose-900/80 hover:bg-rose-700 text-rose-200 text-xs font-semibold">
+                  ${isOnline ? '踢除' : '移除'}
+                </button>
               ` : ''}
             </div>
           </div>
