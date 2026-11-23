@@ -1121,6 +1121,10 @@
       STANDBY:       ['處置完畢選手續跑', '已交接救護車後送', '已交接醫院急診返隊', '選手棄賽已上收容車', '誤觸恢復待命']
     };
 
+    function isAdminRole() {
+      return selectedRole === 'dispatch' && (adminTier === 'SUPER' || adminTier === 'DISPATCHER');
+    }
+
     function isSuperAdmin() {
       return selectedRole === 'dispatch' && adminTier === 'SUPER';
     }
@@ -1275,7 +1279,7 @@
       }).addTo(map);
 
       map.on('click', (e) => {
-        if (selectedRole !== 'dispatch' || !isSystemStarted) return;
+        if (!isAdminRole() || !isSystemStarted) return;
         const { lat, lng } = e.latlng;
 
         if (mapPickPurpose === 'poi') {
@@ -1739,6 +1743,7 @@
       db.ref(`${DB_ROOT}/cases`).on('value', (snapshot) => {
         allCasesData = snapshot.val() || {};
         renderCasesOnMapAndSidebar();
+        renderUnitsOnMapAndSidebar();
         updateRiderActiveCaseBanner();
       });
     }
@@ -1891,6 +1896,8 @@
           updateRiderStatusUI('STANDBY', '上線執勤待命中');
           updateRiderActiveCaseBanner();
         }
+
+        renderUnitsOnMapAndSidebar();
 
         await syncUnitToFirebase({
           uid: currentUser.uid,
@@ -2045,7 +2052,7 @@
     }
 
     // =========================================================================
-    // 9B. Google Maps 後送醫院 / 事故點導航輔助
+    // 9B. Google Maps 後送醫院 / 事故點導航輔助（救護車專用導航連結）
     // =========================================================================
     function openHospitalGoogleMapsNav(hospitalName) {
       const cleanName = String(hospitalName || '').trim();
@@ -2483,6 +2490,12 @@
     }
 
     function openAdminDispatchModal(preselectUid = '', keepCurrentDraftPin = false, existingCaseId = '', isRepeatDispatch = false, prefillNote = '') {
+      // 權限守衛：僅管理員（派遣員／最高權限）可開啟派遣令視窗
+      if (!isAdminRole()) {
+        alert('⛔ 權限不足：僅管理員可執行單位派遣。');
+        return;
+      }
+
       supportTargetCaseId = existingCaseId || '';
       isRepeatSameCaseDispatch = Boolean(existingCaseId && isRepeatDispatch);
       if (!keepCurrentDraftPin && !supportTargetCaseId) {
@@ -2571,6 +2584,10 @@
     }
 
     async function sendAdminDispatch() {
+      if (!isAdminRole()) {
+        alert('⛔ 權限不足：僅管理員可發送派遣令。');
+        return;
+      }
       if (isDispatchSending) return;
 
       const targetUid = document.getElementById('dispatchTargetSelect').value;
@@ -2665,6 +2682,7 @@
     }
 
     async function adminUpdateCaseTransportDest(caseId) {
+      if (!isAdminRole()) return;
       const c = allCasesData[caseId];
       if (!c) return;
       const currentDest = c.transportDestination || '';
@@ -2685,6 +2703,7 @@
     }
 
     async function adminCloseCase(caseId) {
+      if (!isAdminRole()) return;
       const c = allCasesData[caseId];
       if (!c) return;
       if (!confirm(`確定要將案件 ${c.caseCode} 結案嗎？\n（指派中的單位將自動恢復為待命狀態，結案紀錄不含後送醫院資訊）`)) return;
@@ -2711,6 +2730,7 @@
     }
 
     async function adminReopenCase(caseId) {
+      if (!isAdminRole()) return;
       const c = allCasesData[caseId];
       if (!c) return;
       await db.ref(`${DB_ROOT}/cases/${caseId}`).update({
@@ -2772,6 +2792,7 @@
     }
 
     function openRadioNoteModal(caseId, presetAction = 'NOTE') {
+      if (!isAdminRole()) return;
       const c = allCasesData[caseId];
       if (!c) return;
       radioTargetCaseId = caseId;
@@ -2832,6 +2853,7 @@
     }
 
     async function submitRadioNote() {
+      if (!isAdminRole()) return;
       if (!radioTargetCaseId || !allCasesData[radioTargetCaseId]) return;
       const reporterVal = document.getElementById('radioReporterSelect').value;
       const actionType = document.getElementById('radioActionSelect').value;
@@ -2942,6 +2964,7 @@
     // 11C. 管理員：案號合併功能
     // =========================================================================
     function openMergeCaseModal(caseId) {
+      if (!isAdminRole()) return;
       const currentCase = allCasesData[caseId];
       if (!currentCase) return;
 
@@ -2990,6 +3013,7 @@
     }
 
     async function executeMergeCases() {
+      if (!isAdminRole()) return;
       const direction = document.getElementById('mergeDirectionSelect').value;
       const otherCaseId = document.getElementById('mergeTargetCaseSelect').value;
       const reason = document.getElementById('inputMergeReason').value.trim();
@@ -3085,6 +3109,7 @@
     // 12. 賽道固定站點 (POI) 管理
     // =========================================================================
     function startAddPoiMode() {
+      if (!isAdminRole()) return;
       enterMapPickMode('poi');
     }
 
@@ -3111,7 +3136,7 @@
     }
 
     async function savePoiMarker() {
-      if (!pendingPoiCoords) return;
+      if (!isAdminRole() || !pendingPoiCoords) return;
       const name = document.getElementById('inputPoiName').value.trim();
       const note = document.getElementById('inputPoiNote').value.trim();
       if (!name) {
@@ -3133,6 +3158,7 @@
     }
 
     async function deletePoiMarker(poiId, poiName) {
+      if (!isAdminRole()) return;
       if (!confirm(`確定要刪除站點「${poiName}」嗎？`)) return;
       await db.ref(`${DB_ROOT}/pois/${poiId}`).remove();
     }
@@ -3198,6 +3224,7 @@
           }
         }
 
+        const safePoiNameArg = escapeJsSingleQuote(poi.name || '');
         const card = document.createElement('div');
         card.className = 'p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-2';
         card.innerHTML = `
@@ -3205,7 +3232,7 @@
             <div class="text-xs font-bold text-white truncate">${meta.icon} ${escapeHtml(poi.name)}</div>
             <div class="text-[11px] text-slate-400 truncate">${escapeHtml(poi.note || meta.label)}</div>
           </div>
-          <button onclick="deletePoiMarker('${id}', '${escapeHtml(poi.name)}')"
+          <button onclick="deletePoiMarker('${id}', '${safePoiNameArg}')"
             class="px-2 py-1 rounded bg-red-950/70 hover:bg-red-800 text-red-300 text-xs shrink-0">
             刪除
           </button>
@@ -3555,6 +3582,7 @@
     function renderUnitsOnMapAndSidebar() {
       const panel = document.getElementById('panelUnits');
       const now = Date.now();
+      const canDispatch = isAdminRole();
       const superMode = isSuperAdmin();
 
       const riders = Object.values(allUnitsData).filter(u => u && u.role === 'rider');
@@ -3594,7 +3622,7 @@
         const badgeClass = isOnline ? meta.class : 'status-offline';
         const statusText = isOnline ? meta.label : '⚫ 已離線/斷訊';
         const timeStr = u.updatedAt ? formatTime(u.updatedAt) : '--:--:--';
-        const unitCase = u.activeCaseId ? allCasesData[u.activeCaseId] : null;
+        const unitCase = (u.activeCaseId && allCasesData[u.activeCaseId]?.status === 'ACTIVE') ? allCasesData[u.activeCaseId] : null;
         const unitCaseCode = unitCase ? unitCase.caseCode : '';
         const devCode = u.deviceCode || (u.uid ? u.uid.slice(0, 6) : '------');
         const isAmb = isAmbulanceCallsign(u.callsign);
@@ -3609,16 +3637,22 @@
               <div class="ems-marker-dot ${dotExtraClass} ${badgeClass}">${iconEmoji}</div>
             </div>
           `;
+
+          // 僅管理員身分顯示地圖 Popup 內的派遣按鈕；一般用戶（機巡／救護車／救護站）完全不顯示
+          const dispatchButtonHtml = canDispatch
+            ? `<button onclick="openAdminDispatchModal('${u.uid}', false, '${unitCase ? u.activeCaseId : ''}', ${Boolean(unitCase)}, '')"
+                style="margin-top:8px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
+                ${unitCase ? `🔁 同案派遣 (${escapeHtml(unitCaseCode)})` : '📢 立即派案給此單位'}
+              </button>`
+            : '';
+
           const popupHtml = `
             <div style="color:#0f172a; min-width:170px;">
               <div style="font-weight:800; font-size:14px;">${escapeHtml(u.name)}</div>
               <div style="font-size:11px; color:#64748b; font-family:monospace;">裝置碼：${escapeHtml(devCode)}</div>
               <div style="font-size:12px; margin-top:2px;">狀態：<strong>${meta.short}</strong> ${unitCaseCode ? `(${escapeHtml(unitCaseCode)})` : ''}</div>
               <div style="font-size:12px; color:#475569; margin-top:4px;">${escapeHtml(u.note || '無備註')}</div>
-              <button onclick="openAdminDispatchModal('${u.uid}', false, '${unitCase ? u.activeCaseId : ''}', ${Boolean(unitCase)}, '')"
-                style="margin-top:8px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
-                ${unitCase ? `🔁 同案派遣 (${escapeHtml(unitCaseCode)})` : '📢 立即派案給此單位'}
-              </button>
+              ${dispatchButtonHtml}
             </div>
           `;
 
@@ -3635,6 +3669,7 @@
           }
         }
 
+        const safeUnitNameArg = escapeJsSingleQuote(u.name || '');
         const card = document.createElement('div');
         card.className = `p-3 rounded-xl border ${isOnline ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-900/60 border-slate-800 opacity-65'}`;
         card.innerHTML = `
@@ -3663,7 +3698,7 @@
                   📍 定位
                 </button>
               ` : ''}
-              ${isOnline ? `
+              ${(isOnline && canDispatch) ? `
                 ${unitCase ? `
                   <button onclick="openAdminDispatchModal('${u.uid}', false, '${u.activeCaseId}', true, '')"
                     class="px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-xs text-white font-bold">
@@ -3681,7 +3716,7 @@
                 `}
               ` : ''}
               ${superMode ? `
-                <button onclick="adminKickUnit('${u.uid}', '${escapeHtml(u.name)}', ${isOnline})" title="強制登出並移除此單位紀錄（僅最高權限）"
+                <button onclick="adminKickUnit('${u.uid}', '${safeUnitNameArg}', ${isOnline})" title="強制登出並移除此單位紀錄（僅最高權限）"
                   class="px-2 py-1 rounded bg-rose-900/80 hover:bg-rose-700 text-rose-200 text-xs font-semibold">
                   ${isOnline ? '踢除' : '移除'}
                 </button>
@@ -3842,6 +3877,11 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+    }
+
+    function escapeJsSingleQuote(str) {
+      if (!str) return '';
+      return escapeHtml(String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
     }
 
     // =========================================================================
