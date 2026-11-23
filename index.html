@@ -272,7 +272,7 @@
     <!-- 地圖容器 -->
     <div id="map" class="flex-1 h-full w-full z-0"></div>
 
-<!-- 管理員地圖左上角（縮放按鈕旁）：放大鏡搜尋按鈕與展開搜尋面板，完全避開右側管理員側邊欄 -->
+    <!-- 管理員地圖左上角（縮放按鈕旁）：放大鏡搜尋按鈕與展開搜尋面板，完全避開右側管理員側邊欄 -->
     <div id="adminMapSearchContainer" class="hidden absolute top-3 left-14 z-[1050] flex flex-col items-start max-w-[calc(100vw-4.5rem)] md:max-w-[340px]">
       <button type="button" id="btnToggleMapSearch" onclick="toggleAdminMapSearch()" title="搜尋地標、路名或賽道站點"
         class="bg-slate-900/95 hover:bg-slate-800 text-sky-300 border border-sky-500/60 px-3.5 py-2 rounded-full shadow-2xl text-xs font-extrabold flex items-center gap-1.5 transition shrink-0">
@@ -326,15 +326,16 @@
             <div class="flex items-center flex-wrap gap-1.5">
               <span id="riderCaseIdBadge" class="px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 font-black text-[11px]">#001</span>
               <span class="text-[11px] font-bold text-red-200">執行中案件 (<span id="riderCaseTime">--:--</span>)</span>
-              <span id="riderCaseDestBadge" class="hidden px-1.5 py-0.5 rounded bg-cyan-800 text-cyan-100 font-bold text-[11px]"></span>
+              <span id="riderCaseDestBadge" onclick="handleRiderDestBadgeClick()" title="點擊開啟後送醫院導航"
+                class="hidden px-1.5 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 text-cyan-100 font-bold text-[11px] cursor-pointer underline decoration-cyan-300/60"></span>
             </div>
             <div id="riderCaseContent" class="text-xs font-bold text-white truncate mt-0.5"></div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button id="btnBannerLocate" onclick="focusMyActiveCasePin()" class="hidden text-xs px-2 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold">
+            <button id="btnBannerLocate" onclick="focusMyActiveCasePin()" class="hidden text-xs px-2 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold">
               📍 看點位
             </button>
-            <button id="btnBannerNav" onclick="navigateToMyActiveCase()" class="hidden text-xs px-2 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold">
+            <button id="btnBannerNav" onclick="navigateToMyActiveCase()" class="hidden text-xs px-2 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-bold">
               🧭 導航
             </button>
           </div>
@@ -367,7 +368,7 @@
           </button>
         </div>
 
-        <!-- 救護車專屬雙按鈕：送醫 / 到院（到院不包含返回待命快捷） -->
+        <!-- 救護車專屬雙按鈕：送醫 / 到院 -->
         <div id="ambulanceExtraButtonsRow" class="hidden grid grid-cols-2 gap-3 mt-2.5">
           <button type="button" onclick="openReportModal('TRANSPORTING')"
             class="py-3 px-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] text-white font-black text-base shadow-lg shadow-cyan-950/50 flex flex-col items-center justify-center transition">
@@ -421,15 +422,15 @@
 
         <div class="flex gap-1">
           <button onclick="openAdminDispatchModal('', null, '', false, '')" title="建立新案件並派遣"
-            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow">
+            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white shadow">
             📢 派案
           </button>
           <button onclick="startAddPoiMode()" title="在地圖上新增補給站/救護站標註"
-            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-teal-700 hover:bg-teal-600 text-white shadow">
+            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-teal-700 hover:bg-teal-600 active:scale-[0.98] text-white shadow">
             📍 標站
           </button>
           <button id="btnOpenEndEvent" onclick="openEndEventModal()" title="賽後匯出資料並清空人員與紀錄（僅最高權限）"
-            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-rose-800 hover:bg-rose-700 text-rose-100 border border-rose-500/60 shadow">
+            class="px-2 py-1.5 rounded-lg text-xs font-bold bg-rose-800 hover:bg-rose-700 active:scale-[0.98] text-rose-100 border border-rose-500/60 shadow">
             🏁 結算清空
           </button>
         </div>
@@ -450,9 +451,15 @@
             </button>
           </div>
 
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">目前賽事密碼：</span>
+            <span id="adminCurrentPasscodeBadge" class="font-mono font-bold text-slate-400">未設定（免密碼）</span>
+          </div>
+
           <div class="flex items-center gap-1.5">
-            <input type="text" id="adminEventPasscodeInput" placeholder="設定本場賽事密碼（留空＝免密碼）"
-              class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
+            <input type="text" id="adminEventPasscodeInput" placeholder="設定或更新本場賽事密碼（留空＝免密碼）"
+              onkeydown="if(event.key==='Enter'){ event.preventDefault(); saveEventPasscode(); }"
+              class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
             <button type="button" id="btnSaveEventPasscode" onclick="saveEventPasscode()"
               class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0">
               💾 更新密碼
@@ -514,7 +521,7 @@
       <textarea id="reportNoteInput" rows="3" placeholder="補述"
         class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-3"></textarea>
 
-      <!-- 救護車專用：後送醫院 / 後送總站自填（結案待命時不帶入） -->
+      <!-- 救護車專用：後送醫院 / 後送總站自填 + 一鍵開啟 Google Maps 導航 -->
       <div id="ambulanceTransportGroup" class="hidden mb-4 p-3 rounded-xl bg-cyan-950/35 border border-cyan-700/60">
         <label class="block text-xs font-semibold text-cyan-300 mb-1.5">🏥 後送醫院 / 後送總站（救護車填寫）：</label>
         <div class="flex flex-wrap gap-1.5 mb-2">
@@ -525,8 +532,14 @@
           <button type="button" onclick="setTransportInput('救護總站')"
             class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 救護總站</button>
         </div>
-        <input type="text" id="inputAmbulanceDestination" placeholder="自行輸入醫院名稱或後送總站（例：部立醫院、醫療站）"
-          class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 text-xs" />
+        <div class="flex gap-1.5">
+          <input type="text" id="inputAmbulanceDestination" placeholder="自行輸入醫院名稱或後送總站（例：部立醫院、醫療站）"
+            class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 text-xs" />
+          <button type="button" onclick="openAmbulanceHospitalNav()" title="開啟 Google Maps 導航前往後送醫院"
+            class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white text-xs font-bold shrink-0">
+            🧭 導航
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -700,7 +713,7 @@
         </select>
       </div>
 
-      <!-- 救護車送醫 / 抵達醫院專屬區塊（支援雙時間記錄與醫院快選） -->
+      <!-- 救護車送醫 / 抵達醫院專屬區塊 -->
       <div id="radioTransportDetailsBox" class="hidden mb-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2.5">
         <div>
           <label class="block text-xs font-semibold text-cyan-300 mb-1">🏥 後送醫院 / 後送總站：</label>
@@ -911,10 +924,15 @@
 
       <!-- 步驟 1：匯出報表 -->
       <div class="p-3.5 rounded-xl bg-slate-800/90 border border-emerald-500/50 mb-4">
-        <div class="text-xs font-bold text-emerald-400 mb-1">步驟 1：下載本場賽事完整勤務報表（Excel CSV）</div>
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <span class="text-xs font-bold text-emerald-400">步驟 1：下載本場賽事完整勤務報表（Excel CSV）</span>
+          <span id="csvExportedBadge" class="hidden px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/60 text-[10px] font-bold text-emerald-300">
+            ✅ 已匯出報表
+          </span>
+        </div>
         <div class="text-[11px] text-slate-400 mb-2.5">包含案件編號、發生時間、送醫/到院時間、結案時間、經緯度、出勤單位與時間軸明細。</div>
         <button type="button" onclick="exportCasesCSV()"
-          class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow flex items-center justify-center gap-2">
+          class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-sm shadow flex items-center justify-center gap-2">
           <span>📥 立即匯出案件追蹤總表 (.csv)</span>
         </button>
       </div>
@@ -932,10 +950,11 @@
         </label>
 
         <input type="password" id="endEventAdminPin" placeholder="請輸入最高權限管理員密碼確認清空"
+          onkeydown="if(event.key==='Enter'){ event.preventDefault(); executeEndEventReset(); }"
           class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-rose-500/60 text-white placeholder-slate-400 text-sm mb-3 tracking-wider" />
 
-        <button type="button" onclick="executeEndEventReset()"
-          class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow">
+        <button type="button" id="btnExecuteEndEventReset" onclick="executeEndEventReset()"
+          class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white font-black text-sm shadow">
           🗑️ 確認清空所有資料並強制人員登出
         </button>
       </div>
@@ -964,11 +983,11 @@
 
       <div class="space-y-2.5">
         <button type="button" onclick="acknowledgeDispatch(true, false)"
-          class="w-full py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-base shadow-lg">
+          class="w-full py-3.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-base shadow-lg">
           🚨 收到！立即轉為「出勤」狀態
         </button>
         <button type="button" id="btnIncomingNav" onclick="acknowledgeDispatch(true, true)"
-          class="hidden w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg">
+          class="hidden w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-bold text-sm shadow-lg">
           🧭 收到轉「出勤」並開啟 Google 導航
         </button>
         <button type="button" onclick="acknowledgeDispatch(false, false)"
@@ -1000,9 +1019,7 @@
     };
 
     const DB_ROOT = 'marathon_ems_tracker';
-    // 總站派遣員密碼 SHA-256
     const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
-    // 最高權限管理員密碼 SHA-256
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
 
@@ -1032,6 +1049,9 @@
     let activeCaseId = null;
     let pendingActionStatus = null;
     let isSubmitting = false;
+    let isDispatchSending = false;
+    let isResettingEvent = false;
+    let hasExportedCsvInSession = false;
 
     let map = null;
     let myMarker = null;
@@ -1115,7 +1135,6 @@
       Object.values(allUnitsData).forEach(u => {
         if (!u || !u.callsign) return;
         if (currentUser && u.uid === currentUser.uid) return;
-        // 救護車重複登入管制：只要有登入紀錄且未被登出/踢除/清空即視為佔用（不含心跳與斷線自動釋放）
         if (isAmbulanceCallsign(u.callsign)) {
           if (!u.isOffline) occupied.add(u.callsign);
           return;
@@ -1131,7 +1150,7 @@
     }
 
     // =========================================================================
-    // 3. 初始化下拉選單（機巡01~15、救護車91~95、第2救護站 ~ 第5救護站 — 保留原樣不改）
+    // 3. 初始化下拉選單
     // =========================================================================
     function populateCallsignDropdown() {
       const sel = document.getElementById('selectVehicleCallsign');
@@ -1306,7 +1325,6 @@
 
       const items = [];
 
-      // 1. 優先比對已建立的賽道固定站點 (POI)
       Object.values(allPoisData).forEach(poi => {
         if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number') return;
         const hay = `${poi.name || ''} ${poi.note || ''}`.toLowerCase();
@@ -1321,7 +1339,6 @@
         }
       });
 
-      // 2. 搭配 OpenStreetMap Nominatim 查詢台灣地標 / 路名 / 建築
       try {
         const center = map ? map.getCenter() : null;
         let url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=tw&accept-language=zh-TW&q=${encodeURIComponent(query)}`;
@@ -1568,7 +1585,6 @@
       });
     }
 
-    // 監聽賽事門禁設定（開放加入開關 & 本場賽事密碼）
     function listenToEventConfig() {
       db.ref(`${DB_ROOT}/event_config`).on('value', (snap) => {
         const val = snap.val() || {};
@@ -1594,6 +1610,8 @@
       const statusBadge = document.getElementById('adminEnrollmentStatusBadge');
       const btnToggle = document.getElementById('btnToggleEnrollment');
       const passInput = document.getElementById('adminEventPasscodeInput');
+      const passBadge = document.getElementById('adminCurrentPasscodeBadge');
+
       if (statusBadge && btnToggle) {
         if (eventAccessConfig.allowJoin) {
           statusBadge.textContent = '🟢 開放加入中';
@@ -1607,6 +1625,17 @@
           btnToggle.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white transition';
         }
       }
+
+      if (passBadge) {
+        if (eventAccessConfig.passcode) {
+          passBadge.textContent = `🔑 ${eventAccessConfig.passcode}`;
+          passBadge.className = 'font-mono font-bold text-amber-300';
+        } else {
+          passBadge.textContent = '未設定（免密碼）';
+          passBadge.className = 'font-mono font-bold text-slate-400';
+        }
+      }
+
       if (passInput && document.activeElement !== passInput) {
         passInput.value = eventAccessConfig.passcode;
       }
@@ -1653,7 +1682,6 @@
       alert('✅ 已清除本場賽事密碼。');
     }
 
-    // 監聽線上單位（含管理員強制登出/清空偵測）
     function listenToAllUnits() {
       db.ref(`${DB_ROOT}/units`).on('value', (snapshot) => {
         const previousUnits = { ...allUnitsData };
@@ -1707,7 +1735,6 @@
       if (reasonMsg) alert(reasonMsg);
     }
 
-    // 監聽全場案件編號追蹤庫
     function listenToAllCases() {
       db.ref(`${DB_ROOT}/cases`).on('value', (snapshot) => {
         allCasesData = snapshot.val() || {};
@@ -1716,7 +1743,6 @@
       });
     }
 
-    // 監聽賽道固定站點 (POI)
     function listenToAllPois() {
       db.ref(`${DB_ROOT}/pois`).on('value', (snapshot) => {
         allPoisData = snapshot.val() || {};
@@ -1724,7 +1750,6 @@
       });
     }
 
-    // 監聽總站派遣通知（含案號連動）
     function listenToDispatches() {
       db.ref(`${DB_ROOT}/dispatches`).limitToLast(20).on('value', (snapshot) => {
         allDispatchesData = snapshot.val() || {};
@@ -1748,7 +1773,7 @@
     }
 
     // =========================================================================
-    // 8. 登入與身分切換邏輯（含重複登入鎖定、門禁驗證與雙級管理員分流）
+    // 8. 登入與身分切換邏輯
     // =========================================================================
     function selectRole(role) {
       selectedRole = role;
@@ -1796,7 +1821,6 @@
           return;
         }
 
-        // 二次即時防撞檢查：確保該編號（含救護車重複登入管制）目前未被其他裝置佔用
         const occupiedSet = getOccupiedCallsignsSet();
         if (occupiedSet.has(callsign)) {
           alert(`🚫 「${callsign}」目前已被其他執勤人員登入使用中！\n請改選其他編號，或聯繫總站踢除重複裝置。`);
@@ -1853,7 +1877,6 @@
         document.getElementById('adminMapSearchContainer').classList.add('hidden');
         document.getElementById('btnTestAlert').classList.remove('hidden');
 
-        // 僅「救護車」顯示「送醫」與「到院」雙按鈕
         document.getElementById('ambulanceExtraButtonsRow').classList.toggle('hidden', vehicleType !== 'AMBULANCE');
 
         const existingData = allUnitsData[currentUser.uid];
@@ -1937,7 +1960,7 @@
     }
 
     // =========================================================================
-    // 9. GPS 定位追蹤（無心跳與無 onDisconnect，僅位置變動時回傳）
+    // 9. GPS 定位追蹤
     // =========================================================================
     function startGpsTracking() {
       const gpsBadge = document.getElementById('gpsIndicator');
@@ -2022,6 +2045,36 @@
     }
 
     // =========================================================================
+    // 9B. Google Maps 後送醫院 / 事故點導航輔助
+    // =========================================================================
+    function openHospitalGoogleMapsNav(hospitalName) {
+      const cleanName = String(hospitalName || '').trim();
+      if (!cleanName) {
+        alert('請先點選或輸入「後送醫院 / 後送總站」名稱！');
+        return;
+      }
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(cleanName)}&travelmode=driving`;
+      window.open(url, '_blank');
+    }
+
+    function openAmbulanceHospitalNav() {
+      const inputEl = document.getElementById('inputAmbulanceDestination');
+      let dest = inputEl ? inputEl.value.trim() : '';
+
+      if (!dest && activeCaseId && allCasesData[activeCaseId]?.transportDestination) {
+        dest = allCasesData[activeCaseId].transportDestination.trim();
+        if (inputEl) inputEl.value = dest;
+      }
+
+      openHospitalGoogleMapsNav(dest);
+    }
+
+    function handleRiderDestBadgeClick() {
+      if (!activeCaseId || !allCasesData[activeCaseId]?.transportDestination) return;
+      openHospitalGoogleMapsNav(allCasesData[activeCaseId].transportDestination);
+    }
+
+    // =========================================================================
     // 10. 案件編號核心引擎 (Cases) 與前線狀態回報
     // =========================================================================
     function generateNextCaseCode() {
@@ -2069,7 +2122,7 @@
 
       const destBadge = document.getElementById('riderCaseDestBadge');
       if (c.transportDestination) {
-        destBadge.textContent = `🏥 後送：${c.transportDestination}`;
+        destBadge.textContent = `🏥 後送：${c.transportDestination}（導航）`;
         destBadge.classList.remove('hidden');
       } else {
         destBadge.classList.add('hidden');
@@ -2153,8 +2206,8 @@
           : '📋 回報現場狀況（如尚未立案將自動建立案件編號）。';
       } else if (targetStatus === 'TRANSPORTING') {
         hintEl.textContent = activeCaseId && allCasesData[activeCaseId]
-          ? `🚑 案件 ${allCasesData[activeCaseId].caseCode} 記錄「送醫離開現場時間」與後送目的地。`
-          : '🚑 記錄救護車送醫出發時間與後送目的地。';
+          ? `🚑 案件 ${allCasesData[activeCaseId].caseCode} 記錄「送醫離開現場時間」與後送目的地（可點導航前往醫院）。`
+          : '🚑 記錄救護車送醫出發時間與後送目的地（可點導航前往醫院）。';
       } else if (targetStatus === 'AT_HOSPITAL') {
         hintEl.textContent = activeCaseId && allCasesData[activeCaseId]
           ? `🏥 案件 ${allCasesData[activeCaseId].caseCode} 記錄「抵達醫院時間」（交接完成後請再按「結案待命」）。`
@@ -2165,7 +2218,6 @@
           : '✅ 狀態將恢復為待命巡邏。';
       }
 
-      // 救護車專用後送欄位（結案待命時隱藏，不帶入後送醫院資訊）
       const transportGroup = document.getElementById('ambulanceTransportGroup');
       const transportInput = document.getElementById('inputAmbulanceDestination');
       const showTransportInput = (vehicleType === 'AMBULANCE') && (targetStatus === 'TRANSPORTING' || targetStatus === 'AT_HOSPITAL');
@@ -2204,6 +2256,21 @@
 
     async function submitStatusReport() {
       if (isSubmitting) return;
+
+      const isPureStatusUpdate = (pendingActionStatus === 'STATUS_UPDATE');
+      const newStatus = isPureStatusUpdate
+        ? (currentStatus === 'STANDBY' ? 'ARRIVED' : currentStatus)
+        : pendingActionStatus;
+
+      if (newStatus === 'STANDBY') {
+        const caseLabel = (activeCaseId && allCasesData[activeCaseId]?.caseCode)
+          ? `案件 ${allCasesData[activeCaseId].caseCode}`
+          : '目前任務';
+        if (!confirm(`確認將「${caseLabel}」結案並恢復為「待命巡邏」嗎？`)) {
+          return;
+        }
+      }
+
       isSubmitting = true;
       const confirmBtn = document.getElementById('btnConfirmReport');
       const origBtnText = confirmBtn.textContent;
@@ -2211,11 +2278,6 @@
       confirmBtn.textContent = '傳送中...';
 
       try {
-        const isPureStatusUpdate = (pendingActionStatus === 'STATUS_UPDATE');
-        const newStatus = isPureStatusUpdate
-          ? (currentStatus === 'STANDBY' ? 'ARRIVED' : currentStatus)
-          : pendingActionStatus;
-
         const rawNote = document.getElementById('reportNoteInput').value.trim();
         const destInputVal = (vehicleType === 'AMBULANCE' && (pendingActionStatus === 'TRANSPORTING' || pendingActionStatus === 'AT_HOSPITAL'))
           ? document.getElementById('inputAmbulanceDestination').value.trim()
@@ -2334,7 +2396,6 @@
           }
 
         } else if (newStatus === 'STANDBY') {
-          // 結案內容不包含「後送醫院」資訊
           if (targetCaseId && allCasesData[targetCaseId]) {
             await db.ref(`${DB_ROOT}/cases/${targetCaseId}`).update({
               status: 'CLOSED',
@@ -2369,6 +2430,12 @@
         });
 
         closeReportModal();
+
+        if (pendingActionStatus === 'TRANSPORTING' && destInputVal) {
+          if (confirm(`已記錄送醫出發！是否立即開啟 Google Maps 導航前往「${destInputVal}」？`)) {
+            openHospitalGoogleMapsNav(destInputVal);
+          }
+        }
       } finally {
         isSubmitting = false;
         confirmBtn.disabled = false;
@@ -2448,7 +2515,12 @@
           const opt = document.createElement('option');
           opt.value = u.uid;
           const stShort = (STATUS_META[u.status] || STATUS_META.STANDBY).short;
-          opt.textContent = `${u.name} [${stShort}]`;
+          const activeCase = (u.activeCaseId && allCasesData[u.activeCaseId]?.status === 'ACTIVE')
+            ? allCasesData[u.activeCaseId].caseCode
+            : '';
+          opt.textContent = activeCase
+            ? `${u.name} [${stShort} · ${activeCase}]`
+            : `${u.name} [${stShort}]`;
           if (u.uid === preselectUid) opt.selected = true;
           sel.appendChild(opt);
         });
@@ -2499,82 +2571,97 @@
     }
 
     async function sendAdminDispatch() {
+      if (isDispatchSending) return;
+
       const targetUid = document.getElementById('dispatchTargetSelect').value;
       const note = document.getElementById('adminDispatchNote').value.trim();
       const adminTransportDest = document.getElementById('inputAdminTransportDest').value.trim();
 
       if (!note) {
         alert('請輸入事故公里數、地標或任務指令！');
+        document.getElementById('adminDispatchNote').focus();
         return;
       }
 
-      const targetUnit = targetUid ? allUnitsData[targetUid] : null;
-      const targetName = targetUnit ? targetUnit.name : '待指派單位';
-      let finalCaseId = supportTargetCaseId;
-      let finalCaseCode = '';
-      let caseLat = selectedDispatchCoords ? selectedDispatchCoords.lat : null;
-      let caseLng = selectedDispatchCoords ? selectedDispatchCoords.lng : null;
+      const btnSend = document.getElementById('btnSendDispatch');
+      const origText = btnSend.textContent;
+      isDispatchSending = true;
+      btnSend.disabled = true;
+      btnSend.textContent = '派遣傳送中...';
 
-      if (finalCaseId && allCasesData[finalCaseId]) {
-        const existingCase = allCasesData[finalCaseId];
-        finalCaseCode = existingCase.caseCode;
-        caseLat = typeof existingCase.lat === 'number' ? existingCase.lat : null;
-        caseLng = typeof existingCase.lng === 'number' ? existingCase.lng : null;
+      try {
+        const targetUnit = targetUid ? allUnitsData[targetUid] : null;
+        const targetName = targetUnit ? targetUnit.name : '待指派單位';
+        let finalCaseId = supportTargetCaseId;
+        let finalCaseCode = '';
+        let caseLat = selectedDispatchCoords ? selectedDispatchCoords.lat : null;
+        let caseLng = selectedDispatchCoords ? selectedDispatchCoords.lng : null;
 
-        const updates = { updatedAt: firebase.database.ServerValue.TIMESTAMP };
-        if (targetUid) updates[`assignedUnits/${targetUid}`] = targetName;
-        if (adminTransportDest) updates.transportDestination = adminTransportDest;
-        await db.ref(`${DB_ROOT}/cases/${finalCaseId}`).update(updates);
+        if (finalCaseId && allCasesData[finalCaseId]) {
+          const existingCase = allCasesData[finalCaseId];
+          finalCaseCode = existingCase.caseCode;
+          caseLat = typeof existingCase.lat === 'number' ? existingCase.lat : null;
+          caseLng = typeof existingCase.lng === 'number' ? existingCase.lng : null;
 
-        const actionLabel = isRepeatSameCaseDispatch
-          ? `🔁 同案再次派遣 ${targetName}`
-          : `➕ 增派支援 ${targetName}`;
-        const destSuffix = adminTransportDest ? `（指定後送：${adminTransportDest}）` : '';
-        await appendTimelineEvent(finalCaseId, '救護總站', actionLabel, note + destSuffix);
-      } else {
-        const caseRef = db.ref(`${DB_ROOT}/cases`).push();
-        finalCaseId = caseRef.key;
-        finalCaseCode = generateNextCaseCode();
-        const assignedObj = targetUid ? { [targetUid]: targetName } : {};
+          const updates = { updatedAt: firebase.database.ServerValue.TIMESTAMP };
+          if (targetUid) updates[`assignedUnits/${targetUid}`] = targetName;
+          if (adminTransportDest) updates.transportDestination = adminTransportDest;
+          await db.ref(`${DB_ROOT}/cases/${finalCaseId}`).update(updates);
 
-        await caseRef.set({
-          caseCode: finalCaseCode,
-          status: 'ACTIVE',
-          summary: note,
-          source: 'DISPATCH_CENTER',
-          createdBy: '救護總站',
-          createdAt: firebase.database.ServerValue.TIMESTAMP,
-          transportDestination: adminTransportDest || '',
-          lat: caseLat,
-          lng: caseLng,
-          assignedUnits: assignedObj
-        });
-        const destSuffix = adminTransportDest ? `（指定後送：${adminTransportDest}）` : '';
-        await appendTimelineEvent(finalCaseId, '救護總站', `📢 立案並派遣 ${targetName}`, note + destSuffix);
+          const actionLabel = isRepeatSameCaseDispatch
+            ? `🔁 同案再次派遣 ${targetName}`
+            : `➕ 增派支援 ${targetName}`;
+          const destSuffix = adminTransportDest ? `（指定後送：${adminTransportDest}）` : '';
+          await appendTimelineEvent(finalCaseId, '救護總站', actionLabel, note + destSuffix);
+        } else {
+          const caseRef = db.ref(`${DB_ROOT}/cases`).push();
+          finalCaseId = caseRef.key;
+          finalCaseCode = generateNextCaseCode();
+          const assignedObj = targetUid ? { [targetUid]: targetName } : {};
+
+          await caseRef.set({
+            caseCode: finalCaseCode,
+            status: 'ACTIVE',
+            summary: note,
+            source: 'DISPATCH_CENTER',
+            createdBy: '救護總站',
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            transportDestination: adminTransportDest || '',
+            lat: caseLat,
+            lng: caseLng,
+            assignedUnits: assignedObj
+          });
+          const destSuffix = adminTransportDest ? `（指定後送：${adminTransportDest}）` : '';
+          await appendTimelineEvent(finalCaseId, '救護總站', `📢 立案並派遣 ${targetName}`, note + destSuffix);
+        }
+
+        if (targetUid && targetUnit) {
+          await db.ref(`${DB_ROOT}/units/${targetUid}`).update({
+            activeCaseId: finalCaseId
+          });
+
+          await db.ref(`${DB_ROOT}/dispatches`).push({
+            caseId: finalCaseId,
+            caseCode: finalCaseCode,
+            targetUid: targetUid,
+            targetName: targetName,
+            message: note,
+            transportDestination: adminTransportDest || (allCasesData[finalCaseId]?.transportDestination || ''),
+            lat: caseLat,
+            lng: caseLng,
+            acknowledged: false,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+          });
+        }
+
+        clearDispatchCoords();
+        closeAdminDispatchModal();
+        switchDispatchTab('cases');
+      } finally {
+        isDispatchSending = false;
+        btnSend.disabled = false;
+        btnSend.textContent = origText;
       }
-
-      if (targetUid && targetUnit) {
-        await db.ref(`${DB_ROOT}/units/${targetUid}`).update({
-          activeCaseId: finalCaseId
-        });
-
-        await db.ref(`${DB_ROOT}/dispatches`).push({
-          caseId: finalCaseId,
-          caseCode: finalCaseCode,
-          targetUid: targetUid,
-          targetName: targetName,
-          message: note,
-          transportDestination: adminTransportDest || (allCasesData[finalCaseId]?.transportDestination || ''),
-          lat: caseLat,
-          lng: caseLng,
-          acknowledged: false,
-          timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-      }
-
-      clearDispatchCoords();
-      closeAdminDispatchModal();
-      switchDispatchTab('cases');
     }
 
     async function adminUpdateCaseTransportDest(caseId) {
@@ -2633,7 +2720,7 @@
       await appendTimelineEvent(caseId, '救護總站', '🔄 重新開啟案件', '案件重新列管追蹤');
     }
 
-async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
+    async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
       if (!isSuperAdmin()) {
         alert('⛔ 「踢除 / 移除」僅限最高權限管理員執行。');
         return;
@@ -2654,7 +2741,7 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
     }
 
     // =========================================================================
-    // 11B. 管理員：無線電代記補述 / 代點救護車送醫・抵達醫院（支援雙時間記錄）
+    // 11B. 管理員：無線電代記補述 / 代點救護車送醫・抵達醫院
     // =========================================================================
     function fillRadioTimeNow(inputId) {
       const el = document.getElementById(inputId);
@@ -2852,7 +2939,7 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
     }
 
     // =========================================================================
-    // 11C. 管理員：案號合併功能（合併時間軸、出勤單位與事故座標）
+    // 11C. 管理員：案號合併功能
     // =========================================================================
     function openMergeCaseModal(caseId) {
       const currentCase = allCasesData[caseId];
@@ -3130,12 +3217,20 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
     // =========================================================================
     // 13. 最高權限管理員：賽事結束結算匯出 CSV & 全隊資料清空精靈
     // =========================================================================
+    function updateCsvExportedBadge() {
+      const badge = document.getElementById('csvExportedBadge');
+      if (badge) {
+        badge.classList.toggle('hidden', !hasExportedCsvInSession);
+      }
+    }
+
     function openEndEventModal() {
       if (!isSuperAdmin()) {
         alert('⛔ 「賽事結束結算與資料清空」僅限最高權限管理員使用。');
         return;
       }
       document.getElementById('endEventAdminPin').value = '';
+      updateCsvExportedBadge();
       document.getElementById('endEventModal').classList.remove('hidden');
     }
 
@@ -3198,9 +3293,14 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      hasExportedCsvInSession = true;
+      updateCsvExportedBadge();
+      alert(`✅ 已匯出 ${caseList.length} 筆案件紀錄（心動力救護派遣紀錄_${dateStr}.csv）。`);
     }
 
     async function executeEndEventReset() {
+      if (isResettingEvent) return;
       if (!isSuperAdmin()) {
         alert('⛔ 權限不足：僅限最高權限管理員執行清空重置。');
         return;
@@ -3217,25 +3317,59 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
 
       if (enteredHash !== SUPER_ADMIN_PASSWORD_SHA256) {
         alert('❌ 最高權限管理員密碼錯誤，無法執行清空！');
+        document.getElementById('endEventAdminPin').focus();
         return;
       }
 
-      if (!confirm('⚠️ 最後確認：\n即將清空本場所有案件、派遣紀錄與單位定位，並強制所有線上人員登出！\n確定要執行嗎？')) {
+      const totalCasesCount = Object.keys(allCasesData).length;
+      const activeCasesCount = Object.values(allCasesData).filter(c => c && c.status === 'ACTIVE').length;
+      const onlineUnitsCount = Object.values(allUnitsData).filter(u => u && u.role === 'rider' && !u.isOffline).length;
+
+      if (totalCasesCount > 0 && !hasExportedCsvInSession) {
+        const goExportFirst = confirm(
+          `⚠️ 防呆提醒：本場目前有 ${totalCasesCount} 筆案件紀錄（進行中 ${activeCasesCount} 筆），且尚未下載 CSV 報表！\n\n` +
+          `按「確定」＝ 取消清空，先去匯出 CSV 報表\n` +
+          `按「取消」＝ 略過匯出並繼續清空流程`
+        );
+        if (goExportFirst) return;
+      }
+
+      if (!confirm(
+        `⚠️ 最終確認：\n` +
+        `• 案件紀錄：共 ${totalCasesCount} 筆（進行中 ${activeCasesCount} 筆）將全數清除\n` +
+        `• 線上單位：約 ${onlineUnitsCount} 個單位將被強制登出並停止 GPS 追蹤\n` +
+        `• 派遣通知與單位定位將一併清空\n\n` +
+        `確定要執行清空嗎？`
+      )) {
         return;
       }
 
-      const clearPois = document.getElementById('chkAlsoClearPois').checked;
+      const btnReset = document.getElementById('btnExecuteEndEventReset');
+      const origResetText = btnReset.textContent;
+      isResettingEvent = true;
+      btnReset.disabled = true;
+      btnReset.textContent = '清空執行中...';
 
-      await db.ref(`${DB_ROOT}/units`).remove();
-      await db.ref(`${DB_ROOT}/cases`).remove();
-      await db.ref(`${DB_ROOT}/dispatches`).remove();
-      if (clearPois) {
-        await db.ref(`${DB_ROOT}/pois`).remove();
+      try {
+        const clearPois = document.getElementById('chkAlsoClearPois').checked;
+
+        await db.ref(`${DB_ROOT}/units`).remove();
+        await db.ref(`${DB_ROOT}/cases`).remove();
+        await db.ref(`${DB_ROOT}/dispatches`).remove();
+        if (clearPois) {
+          await db.ref(`${DB_ROOT}/pois`).remove();
+        }
+
+        hasExportedCsvInSession = false;
+        updateCsvExportedBadge();
+        clearDispatchCoords();
+        closeEndEventModal();
+        alert('✅ 已完成本場賽事資料清空！所有前線人員裝置已同步自動登出並停止定位。');
+      } finally {
+        isResettingEvent = false;
+        btnReset.disabled = false;
+        btnReset.textContent = origResetText;
       }
-
-      clearDispatchCoords();
-      closeEndEventModal();
-      alert('✅ 已完成本場賽事資料清空！所有前線人員裝置已同步自動登出並停止定位。');
     }
 
     // =========================================================================
@@ -3371,44 +3505,44 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
           <div class="flex flex-wrap gap-1.5">
             ${hasCoords ? `
               <button onclick="focusCaseLocation('${id}')"
-                class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold">
+                class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white text-xs font-semibold">
                 📍 定位點
               </button>
             ` : ''}
             ${isActive ? `
               <button onclick="openAdminDispatchModal('', false, '${id}', true, '')"
-                class="px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold">
+                class="px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white text-xs font-bold">
                 🔁 同案派遣
               </button>
               <button onclick="openAdminDispatchModal('', false, '${id}', false, '')"
-                class="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold">
+                class="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 active:scale-[0.98] text-white text-xs font-bold">
                 ➕ 支援
               </button>
               <button onclick="openRadioNoteModal('${id}', 'NOTE')"
-                class="px-2 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
+                class="px-2 py-1 rounded bg-purple-700 hover:bg-purple-600 active:scale-[0.98] text-white text-xs font-bold">
                 🎙️ 無線電補述
               </button>
               <button onclick="openRadioNoteModal('${id}', 'TRANSPORT_BOTH')"
-                class="px-2 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold">
+                class="px-2 py-1 rounded bg-cyan-700 hover:bg-cyan-600 active:scale-[0.98] text-white text-xs font-bold">
                 🚑 代點送醫/到院
               </button>
               <button onclick="adminUpdateCaseTransportDest('${id}')"
-                class="px-2 py-1 rounded bg-teal-800 hover:bg-teal-700 text-cyan-100 text-xs font-bold">
+                class="px-2 py-1 rounded bg-teal-800 hover:bg-teal-700 active:scale-[0.98] text-cyan-100 text-xs font-bold">
                 🏥 後送醫院
               </button>
               ${activeEntries.length > 1 ? `
                 <button onclick="openMergeCaseModal('${id}')"
-                  class="px-2 py-1 rounded bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold">
+                  class="px-2 py-1 rounded bg-indigo-700 hover:bg-indigo-600 active:scale-[0.98] text-white text-xs font-bold">
                   🔗 案號合併
                 </button>
               ` : ''}
               <button onclick="adminCloseCase('${id}')"
-                class="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold ml-auto">
+                class="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 active:scale-[0.98] text-white text-xs font-bold ml-auto">
                 ✅ 結案
               </button>
             ` : `
               <button onclick="adminReopenCase('${id}')"
-                class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs">
+                class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-slate-300 text-xs">
                 🔄 重啟案件
               </button>
             `}
@@ -3522,7 +3656,7 @@ async function adminKickUnit(uid, unitDisplayName, isCurrentlyOnline = true) {
 
           <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-700/70 gap-1">
             <span class="text-[11px] text-slate-400 font-mono">更新：${timeStr}</span>
-       <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5">
               ${(isOnline && typeof u.lat === 'number') ? `
                 <button onclick="focusLocation(${u.lat}, ${u.lng})"
                   class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white font-semibold">
