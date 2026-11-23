@@ -495,7 +495,7 @@
       <!-- 頁籤 3：賽道固定站點管理列表 -->
       <div id="panelPois" class="hidden flex-1 overflow-y-auto p-3 space-y-2.5">
         <div class="flex items-center justify-between bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
-          <span class="text-xs text-slate-300">標註救護站、AED、補給站，全隊地圖皆可見</span>
+          <span class="text-xs text-slate-300">含「救護總站」及管理員新增站點，全隊地圖皆可見</span>
           <button onclick="startAddPoiMode()" class="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shrink-0">
             ➕ 新增站點
           </button>
@@ -1023,6 +1023,17 @@
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
 
+    // 內建救護總站（可依實際總站位置調整 lat / lng）
+    const HQ_STATION_ID = 'HQ_STATION';
+    const DEFAULT_HQ_POI = {
+      type: 'MEDICAL',
+      name: '救護總站',
+      note: '救護指揮與後送總站',
+      lat: 23.0000,
+      lng: 120.2000,
+      isHQ: true
+    };
+
     async function sha256Hex(text) {
       if (!window.crypto || !window.crypto.subtle) {
         throw new Error('目前環境不支援 Web Crypto SHA-256（請使用 HTTPS 或 localhost）');
@@ -1131,6 +1142,34 @@
 
     function isAmbulanceCallsign(callsign) {
       return typeof callsign === 'string' && callsign.startsWith('救護車');
+    }
+
+    // 合併「救護總站」與管理員新增的站點（確保救護總站永遠存在且不重複）
+    function getAllPoisWithHq() {
+      const merged = {};
+      const adminEntries = Object.entries(allPoisData || {});
+      const hasAdminHq = adminEntries.some(([k, p]) => p && (k === HQ_STATION_ID || p.isHQ || p.name === '救護總站'));
+
+      if (!hasAdminHq) {
+        const center = map ? map.getCenter() : null;
+        merged[HQ_STATION_ID] = {
+          ...DEFAULT_HQ_POI,
+          lat: center ? Number(center.lat.toFixed(6)) : DEFAULT_HQ_POI.lat,
+          lng: center ? Number(center.lng.toFixed(6)) : DEFAULT_HQ_POI.lng
+        };
+      }
+
+      adminEntries.forEach(([id, poi]) => {
+        if (!poi) return;
+        const isHqItem = id === HQ_STATION_ID || poi.isHQ || poi.name === '救護總站';
+        merged[id] = {
+          ...poi,
+          isHQ: isHqItem,
+          name: isHqItem ? (poi.name || '救護總站') : poi.name
+        };
+      });
+
+      return merged;
     }
 
     function getOccupiedCallsignsSet() {
@@ -1278,6 +1317,8 @@
         maxZoom: 19
       }).addTo(map);
 
+      renderPoisOnMapAndSidebar();
+
       map.on('click', (e) => {
         if (!isAdminRole() || !isSystemStarted) return;
         const { lat, lng } = e.latlng;
@@ -1328,8 +1369,9 @@
       resultsEl.innerHTML = '<div class="text-xs text-slate-400 py-1.5 px-2">查詢中...</div>';
 
       const items = [];
+      const allPois = getAllPoisWithHq();
 
-      Object.values(allPoisData).forEach(poi => {
+      Object.values(allPois).forEach(poi => {
         if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number') return;
         const hay = `${poi.name || ''} ${poi.note || ''}`.toLowerCase();
         if (hay.includes(query.toLowerCase())) {
@@ -1928,6 +1970,7 @@
         applyAdminTierPermissionsUI();
         renderCasesOnMapAndSidebar();
         renderUnitsOnMapAndSidebar();
+        renderPoisOnMapAndSidebar();
       }
 
       setTimeout(() => map.invalidateSize(), 200);
@@ -2127,17 +2170,19 @@
       document.getElementById('riderCaseTime').textContent = formatTime(c.createdAt);
       document.getElementById('riderCaseContent').textContent = c.summary || '救援任務進行中';
 
+      const destHospital = (c.transportDestination || '').trim();
       const destBadge = document.getElementById('riderCaseDestBadge');
-      if (c.transportDestination) {
-        destBadge.textContent = `🏥 後送：${c.transportDestination}（導航）`;
+      if (destHospital) {
+        destBadge.textContent = `🏥 後送：${destHospital}（導航）`;
         destBadge.classList.remove('hidden');
       } else {
         destBadge.classList.add('hidden');
       }
 
       const hasCoords = typeof c.lat === 'number' && typeof c.lng === 'number';
+      const canNavigate = hasCoords || Boolean(destHospital);
       document.getElementById('btnBannerLocate').classList.toggle('hidden', !hasCoords);
-      document.getElementById('btnBannerNav').classList.toggle('hidden', !hasCoords);
+      document.getElementById('btnBannerNav').classList.toggle('hidden', !canNavigate);
     }
 
     function focusMyActiveCasePin() {
@@ -2149,31 +2194,31 @@
       }
     }
 
-function navigateToMyActiveCase() {
-  if (!activeCaseId || !allCasesData[activeCaseId]) {
-    alert('目前沒有執行中的案件可導航。');
-    return;
-  }
-  const c = allCasesData[activeCaseId];
-  const destHospital = (c.transportDestination || '').trim();
+    function navigateToMyActiveCase() {
+      if (!activeCaseId || !allCasesData[activeCaseId]) {
+        alert('目前沒有執行中的案件可導航。');
+        return;
+      }
+      const c = allCasesData[activeCaseId];
+      const destHospital = (c.transportDestination || '').trim();
 
-  if (destHospital && (currentStatus === 'TRANSPORTING' || currentStatus === 'AT_HOSPITAL')) {
-    openHospitalGoogleMapsNav(destHospital);
-    return;
-  }
+      if (destHospital && (currentStatus === 'TRANSPORTING' || currentStatus === 'AT_HOSPITAL')) {
+        openHospitalGoogleMapsNav(destHospital);
+        return;
+      }
 
-  if (typeof c.lat === 'number' && typeof c.lng === 'number') {
-    openGoogleMapsNav(c.lat, c.lng);
-    return;
-  }
+      if (typeof c.lat === 'number' && typeof c.lng === 'number') {
+        openGoogleMapsNav(c.lat, c.lng);
+        return;
+      }
 
-  if (destHospital) {
-    openHospitalGoogleMapsNav(destHospital);
-    return;
-  }
+      if (destHospital) {
+        openHospitalGoogleMapsNav(destHospital);
+        return;
+      }
 
-  alert('此案件尚無事故點座標，也尚未填寫後送醫院。');
-}
+      alert('此案件尚無事故點座標，也尚未填寫後送醫院。');
+    }
 
     async function pinCurrentLocationToActiveCase() {
       if (!myCoords) {
@@ -2508,7 +2553,6 @@ function navigateToMyActiveCase() {
     }
 
     function openAdminDispatchModal(preselectUid = '', keepCurrentDraftPin = false, existingCaseId = '', isRepeatDispatch = false, prefillNote = '') {
-      // 權限守衛：僅管理員（派遣員／最高權限）可開啟派遣令視窗
       if (!isAdminRole()) {
         alert('⛔ 權限不足：僅管理員可執行單位派遣。');
         return;
@@ -3124,7 +3168,7 @@ function navigateToMyActiveCase() {
     }
 
     // =========================================================================
-    // 12. 賽道固定站點 (POI) 管理
+    // 12. 賽道固定站點 (POI) 管理（含救護總站 + 管理員新增站點）
     // =========================================================================
     function startAddPoiMode() {
       if (!isAdminRole()) return;
@@ -3162,10 +3206,16 @@ function navigateToMyActiveCase() {
         return;
       }
 
-      await db.ref(`${DB_ROOT}/pois`).push({
+      const isHq = (name === '救護總站');
+      const targetRef = isHq
+        ? db.ref(`${DB_ROOT}/pois/${HQ_STATION_ID}`)
+        : db.ref(`${DB_ROOT}/pois`).push();
+
+      await targetRef.set({
         type: selectedPoiType,
         name: name,
         note: note,
+        isHQ: isHq,
         lat: pendingPoiCoords.lat,
         lng: pendingPoiCoords.lng,
         createdAt: firebase.database.ServerValue.TIMESTAMP
@@ -3177,6 +3227,10 @@ function navigateToMyActiveCase() {
 
     async function deletePoiMarker(poiId, poiName) {
       if (!isAdminRole()) return;
+      if (poiId === HQ_STATION_ID || poiName === '救護總站') {
+        alert('「救護總站」為預設核心站點，無法直接刪除。');
+        return;
+      }
       if (!confirm(`確定要刪除站點「${poiName}」嗎？`)) return;
       await db.ref(`${DB_ROOT}/pois/${poiId}`).remove();
     }
@@ -3189,12 +3243,18 @@ function navigateToMyActiveCase() {
     }
 
     function renderPoisOnMapAndSidebar() {
-      const poiEntries = Object.entries(allPoisData);
+      const allPois = getAllPoisWithHq();
+      const poiEntries = Object.entries(allPois).sort((a, b) => {
+        const aHq = (a[0] === HQ_STATION_ID || a[1].isHQ || a[1].name === '救護總站') ? 0 : 1;
+        const bHq = (b[0] === HQ_STATION_ID || b[1].isHQ || b[1].name === '救護總站') ? 0 : 1;
+        return aHq - bHq;
+      });
+
       document.getElementById('poiCountBadge').textContent = poiEntries.length;
       document.getElementById('poiTabCount').textContent = poiEntries.length;
 
       Object.keys(poiMarkers).forEach(id => {
-        if (!allPoisData[id] || !isPoiVisible) {
+        if (!allPois[id] || !isPoiVisible) {
           map.removeLayer(poiMarkers[id]);
           delete poiMarkers[id];
         }
@@ -3208,19 +3268,23 @@ function navigateToMyActiveCase() {
 
       listContainer.innerHTML = '';
       poiEntries.forEach(([id, poi]) => {
+        const isHq = id === HQ_STATION_ID || poi.isHQ || poi.name === '救護總站';
         const meta = POI_META[poi.type] || POI_META.MEDICAL;
+        const badgeBg = isHq ? '#0f766e' : meta.bg;
+        const iconEmoji = isHq ? '🏢' : meta.icon;
+        const typeLabel = isHq ? '救護總站（核心站點）' : meta.label;
 
         if (isPoiVisible && typeof poi.lat === 'number' && typeof poi.lng === 'number') {
           const pinHtml = `
             <div class="poi-pin-wrapper">
-              <div class="poi-pin-badge" style="background:${meta.bg};">${escapeHtml(poi.name)}</div>
-              <div class="poi-pin-circle" style="background:${meta.bg};">${meta.icon}</div>
+              <div class="poi-pin-badge" style="background:${badgeBg};">${escapeHtml(poi.name)}</div>
+              <div class="poi-pin-circle" style="background:${badgeBg};">${iconEmoji}</div>
             </div>
           `;
           const popupHtml = `
             <div style="color:#0f172a; min-width:165px;">
-              <div style="font-weight:900; font-size:13px;">${meta.icon} ${escapeHtml(poi.name)}</div>
-              <div style="font-size:11px; color:#475569;">${meta.label}</div>
+              <div style="font-weight:900; font-size:13px;">${iconEmoji} ${escapeHtml(poi.name)}</div>
+              <div style="font-size:11px; color:#475569;">${typeLabel}</div>
               ${poi.note ? `<div style="font-size:12px; margin-top:4px; background:#f1f5f9; padding:4px; border-radius:4px;">${escapeHtml(poi.note)}</div>` : ''}
               <button onclick="openGoogleMapsNav(${poi.lat}, ${poi.lng})"
                 style="margin-top:6px; width:100%; padding:5px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
@@ -3234,7 +3298,7 @@ function navigateToMyActiveCase() {
             poiMarkers[id].setPopupContent(popupHtml);
           } else {
             const m = L.marker([poi.lat, poi.lng], {
-              zIndexOffset: 600,
+              zIndexOffset: isHq ? 700 : 600,
               icon: L.divIcon({ className: '', html: pinHtml })
             }).addTo(map);
             m.bindPopup(popupHtml);
@@ -3244,16 +3308,24 @@ function navigateToMyActiveCase() {
 
         const safePoiNameArg = escapeJsSingleQuote(poi.name || '');
         const card = document.createElement('div');
-        card.className = 'p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-2';
+        card.className = `p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+          isHq ? 'bg-teal-950/35 border-teal-600/70' : 'bg-slate-800/90 border-slate-700'
+        }`;
         card.innerHTML = `
           <div class="min-w-0 cursor-pointer flex-1" onclick="focusLocation(${poi.lat}, ${poi.lng})">
-            <div class="text-xs font-bold text-white truncate">${meta.icon} ${escapeHtml(poi.name)}</div>
-            <div class="text-[11px] text-slate-400 truncate">${escapeHtml(poi.note || meta.label)}</div>
+            <div class="text-xs font-bold text-white truncate flex items-center gap-1.5">
+              <span>${iconEmoji} ${escapeHtml(poi.name)}</span>
+              ${isHq ? '<span class="px-1.5 py-0.5 rounded bg-teal-700 text-teal-100 text-[10px]">總站</span>' : ''}
+            </div>
+            <div class="text-[11px] text-slate-400 truncate">${escapeHtml(poi.note || typeLabel)}</div>
           </div>
-          <button onclick="deletePoiMarker('${id}', '${safePoiNameArg}')"
-            class="px-2 py-1 rounded bg-red-950/70 hover:bg-red-800 text-red-300 text-xs shrink-0">
-            刪除
-          </button>
+          ${isHq
+            ? '<span class="px-2 py-1 rounded bg-slate-800 text-slate-400 text-[11px] shrink-0">預設</span>'
+            : `<button onclick="deletePoiMarker('${id}', '${safePoiNameArg}')"
+                class="px-2 py-1 rounded bg-red-950/70 hover:bg-red-800 text-red-300 text-xs shrink-0">
+                刪除
+              </button>`
+          }
         `;
         listContainer.appendChild(card);
       });
@@ -3656,7 +3728,6 @@ function navigateToMyActiveCase() {
             </div>
           `;
 
-          // 僅管理員身分顯示地圖 Popup 內的派遣按鈕；一般用戶（機巡／救護車／救護站）完全不顯示
           const dispatchButtonHtml = canDispatch
             ? `<button onclick="openAdminDispatchModal('${u.uid}', false, '${unitCase ? u.activeCaseId : ''}', ${Boolean(unitCase)}, '')"
                 style="margin-top:8px; width:100%; padding:5px 8px; background:#d97706; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer;">
