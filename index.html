@@ -194,6 +194,10 @@
         </div>
       </div>
 
+      <div id="kickedNoticeBanner" class="hidden mt-3 text-xs font-bold text-rose-200 bg-rose-950/85 border border-rose-500/80 rounded-xl px-3 py-2.5">
+        ⛔ 您已被總站管理員踢除並強制登出，GPS 定位回報已停止。若需重新執勤請再次登入。
+      </div>
+
       <div class="mt-5 space-y-4">
         <div>
           <label class="block text-sm font-semibold text-slate-300 mb-2">1. 請選擇執勤身分或螢幕看板：</label>
@@ -612,7 +616,16 @@
 
       <!-- 頁籤 2：線上機巡、救護車與救護站即時狀態 -->
       <div id="panelUnits" class="hidden flex-1 overflow-y-auto p-3 space-y-2.5">
-        <div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>
+        <div class="flex items-center justify-between bg-slate-800/80 p-2 rounded-xl border border-slate-700 gap-2">
+          <span class="text-[11px] text-slate-300">逾 60 秒無心跳自動視為離線</span>
+          <button type="button" onclick="cleanupStaleOfflineUnits()"
+            class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-bold text-amber-200 border border-slate-600 shrink-0">
+            🧹 清理離線佔位
+          </button>
+        </div>
+        <div id="unitsListContent" class="space-y-2.5">
+          <div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>
+        </div>
       </div>
 
       <!-- 頁籤 3：賽道固定站點管理列表 -->
@@ -1308,6 +1321,9 @@
     const OFFLINE_QUEUE_KEY = 'ems_offline_queue_v1';
     const BOARD_AUTH_SESSION_KEY = 'ems_board_auth_pass_v1';
 
+    // 心跳逾時門檻：超過 60 秒無心跳即視為離線，不佔位
+    const UNIT_HEARTBEAT_TIMEOUT_MS = 60000;
+
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
 
     let dispatcherPasscodeHash = '';
@@ -1458,6 +1474,13 @@
       return 'MOTO';
     }
 
+    function isUnitCurrentlyOnline(unit, now = Date.now()) {
+      if (!unit || unit.online !== true || unit.kicked === true) return false;
+      const lastSeen = Number(unit.lastSeen || 0);
+      if (!lastSeen) return false;
+      return (now - lastSeen) < UNIT_HEARTBEAT_TIMEOUT_MS;
+    }
+
     const STATUS_CONFIG = {
       STANDBY:      { label: '🟢 待命巡邏', short: '待命', color: '#10b981', cssClass: 'status-standby' },
       DISPATCHED:   { label: '🚨 出勤中',   short: '出勤', color: '#ef4444', cssClass: 'status-dispatched' },
@@ -1533,6 +1556,8 @@
     let myUnitType = 'MOTO';
     let myDeviceId = '';
     let myUnitId = '';
+    let myUnitRef = null;
+    let isKickedByAdmin = false;
     let currentStatus = 'STANDBY';
     let myActiveCaseId = '';
     let myLat = null;
@@ -1553,6 +1578,7 @@
     let boardCaseMode = 'ALL';
     let boardShowMap = true;
     let boardClockTimer = null;
+    let unitRefreshTimer = null;
 
     let eventEnrollmentOpen = true;
     let boardEnabled = true;
@@ -1609,6 +1635,7 @@
     }
 
     function enqueueOfflineAction(actionObj) {
+      if (isKickedByAdmin) return;
       const q = getOfflineQueue();
       q.push({
         id: `off_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1619,7 +1646,7 @@
     }
 
     async function flushOfflineQueue(showToast = false) {
-      if (!db || !currentUser || !navigator.onLine) {
+      if (!db || !currentUser || !navigator.onLine || isKickedByAdmin) {
         if (showToast) alert('目前仍處於無網路狀態，待恢復連線後系統將自動補傳。');
         return;
       }
@@ -1662,14 +1689,13 @@
       flushOfflineQueue(false);
     });
 
-    // 手機從 Google Maps 切回網頁時，防止畫面停在空白或地圖未重繪
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         setTimeout(() => {
           if (map) {
             try { map.invalidateSize(true); } catch (e) {}
           }
-          if (db && currentUser) {
+          if (db && currentUser && !isKickedByAdmin) {
             flushOfflineQueue(false);
           }
         }, 250);
@@ -1696,7 +1722,7 @@
     }
 
     // =========================================================================
-    // 3. 安全外開導航輔助（解決救護總站圖釘/切回空白頁問題）
+    // 3. 安全外開導航輔助
     // =========================================================================
     function openExternalMapsNavigation(url) {
       if (!url) return;
@@ -1719,7 +1745,6 @@
       const cleanDest = String(destName || '').trim();
       if (!cleanDest) return '';
 
-      // 優先比對地圖站點中名稱完全相符或關鍵字相符（例如「救護總站」）的座標
       const pois = Object.values(allPoisData || {});
       const matchedPoi = pois.find(p => {
         const pName = String(p.name || '').trim();
@@ -1913,6 +1938,16 @@
       renderVehicleSelectOptions();
       updateOfflineQueueBadge();
 
+      // 定期刷新派遣端單位列表與地圖在線狀態（過濾心跳逾時佔位）
+      if (!unitRefreshTimer) {
+        unitRefreshTimer = setInterval(() => {
+          renderVehicleSelectOptions();
+          renderAllMarkers();
+          if (selectedRole === 'dispatch') renderUnitsList();
+          if (selectedRole === 'board') renderLiveBoardDashboard();
+        }, 5000);
+      }
+
       try {
         app = firebase.initializeApp(firebaseConfig);
         auth = firebase.auth();
@@ -1987,7 +2022,7 @@
 
       const occupiedAmbMap = {};
       Object.values(allUnitsData || {}).forEach(u => {
-        if (u.unitType === 'AMBULANCE' && u.online && (now - (u.lastSeen || 0) < 180000)) {
+        if (u.unitType === 'AMBULANCE' && isUnitCurrentlyOnline(u, now)) {
           occupiedAmbMap[u.callsign] = u;
         }
       });
@@ -2105,6 +2140,9 @@
         return;
       }
 
+      isKickedByAdmin = false;
+      document.getElementById('kickedNoticeBanner')?.classList.add('hidden');
+
       if (selectedRole === 'board') {
         if (!boardEnabled) {
           alert('⛔ 戰情看板目前由最高權限管理員設定為「停用／未開放」，請聯繫總站開啟。');
@@ -2188,8 +2226,7 @@
           const now = Date.now();
           const conflictUnit = Object.values(allUnitsData || {}).find(u =>
             u.callsign === myVehicleCallsign &&
-            u.online &&
-            (now - (u.lastSeen || 0) < 180000) &&
+            isUnitCurrentlyOnline(u, now) &&
             u.deviceId && u.deviceId !== myDeviceId
           );
           if (conflictUnit) {
@@ -2263,18 +2300,77 @@
       if (accessCard) accessCard.classList.toggle('hidden', !isSuper);
     }
 
-    async function reopenSetup() {
-      clearDraftDispatchPin();
-      if (selectedRole === 'rider' && myUnitId && db) {
-        await db.ref(`${DB_ROOT}/units/${myUnitId}`).update({
-          online: false,
-          lastSeen: firebase.database.ServerValue.TIMESTAMP
-        }).catch(() => {});
-      }
+    function detachRiderListenersAndTimers() {
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
+      if (myUnitRef) {
+        myUnitRef.off();
+      }
+      if (db && myVehicleCallsign) {
+        db.ref(`${DB_ROOT}/dispatches/${myVehicleCallsign}`).off();
+      }
+    }
+
+    async function forceExitRiderByKick(reasonText = '您已被總站管理員踢除並強制登出，GPS 定位回報已停止。') {
+      if (isKickedByAdmin) return;
+      isKickedByAdmin = true;
+
+      const targetRef = myUnitRef || (db && myUnitId ? db.ref(`${DB_ROOT}/units/${myUnitId}`) : null);
+      if (targetRef) {
+        try { await targetRef.onDisconnect().cancel(); } catch (e) {}
+        try {
+          await targetRef.update({
+            online: false,
+            kicked: true,
+            activeCaseId: '',
+            lastSeen: firebase.database.ServerValue.TIMESTAMP
+          });
+        } catch (e) {}
+      }
+
+      detachRiderListenersAndTimers();
+      myActiveCaseId = '';
+      currentStatus = 'STANDBY';
+      adminLevel = null;
+
+      document.getElementById('reportModal')?.classList.add('hidden');
+      document.getElementById('incomingDispatchModal')?.classList.add('hidden');
+      document.getElementById('riderControlPanel')?.classList.add('hidden');
+      document.getElementById('dispatchDashboard')?.classList.add('hidden');
+      document.getElementById('adminMapSearchContainer')?.classList.add('hidden');
+      document.getElementById('btnTestAlert')?.classList.add('hidden');
+      closeLiveBoardView();
+
+      const banner = document.getElementById('kickedNoticeBanner');
+      if (banner) {
+        banner.textContent = `⛔ ${reasonText}`;
+        banner.classList.remove('hidden');
+      }
+
+      document.getElementById('setupModal').classList.remove('hidden');
+      updateStartButtonState();
+      alert(`⛔ ${reasonText}`);
+    }
+
+    async function reopenSetup() {
+      clearDraftDispatchPin();
+      const targetRef = myUnitRef || (db && myUnitId ? db.ref(`${DB_ROOT}/units/${myUnitId}`) : null);
+
+      if (selectedRole === 'rider' && targetRef && !isKickedByAdmin) {
+        try { await targetRef.onDisconnect().cancel(); } catch (e) {}
+        try {
+          await targetRef.update({
+            online: false,
+            lastSeen: firebase.database.ServerValue.TIMESTAMP
+          });
+        } catch (e) {}
+      }
+
+      detachRiderListenersAndTimers();
+      myUnitRef = null;
+      myUnitId = '';
       adminLevel = null;
       closeLiveBoardView();
       document.getElementById('adminMapSearchContainer').classList.add('hidden');
@@ -2611,7 +2707,6 @@
 
       L.control.zoom({ position: 'topright' }).addTo(map);
 
-      // 管理員點擊地圖：先放可拖曳大頭針（或依選點模式放置站點/大頭針）
       map.on('click', (e) => {
         if (selectedRole !== 'dispatch') return;
         const { lat, lng } = e.latlng;
@@ -2623,7 +2718,6 @@
           return;
         }
 
-        // 預設或 dispatch 選點模式：先在地圖放上大頭針並顯示底部確認列
         if (mapPickMode === 'dispatch') {
           cancelMapPickMode();
         }
@@ -2836,7 +2930,6 @@
             map.removeLayer(searchPreviewMarker);
             searchPreviewMarker = null;
           }
-          // 搜尋點選後同步放置可拖曳大頭針，方便直接微調並派遣
           placeDraftDispatchPin(chosen.lat, chosen.lng, true);
           toggleAdminMapSearch(false);
         });
@@ -2844,9 +2937,14 @@
     }
 
     // =========================================================================
-    // 9. GPS 定位追蹤
+    // 9. GPS 定位追蹤與人員狀態監聽（含防踢除寫回保護）
     // =========================================================================
     function startGpsTracking() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
       const gpsBadge = document.getElementById('gpsIndicator');
       if (!('geolocation' in navigator)) {
         gpsBadge.textContent = '❌ 無 GPS';
@@ -2855,6 +2953,8 @@
 
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
+          if (isKickedByAdmin || selectedRole !== 'rider' || !myUnitId) return;
+
           myLat = pos.coords.latitude;
           myLng = pos.coords.longitude;
           const acc = Math.round(pos.coords.accuracy);
@@ -2862,12 +2962,13 @@
           gpsBadge.textContent = `📡 GPS (${acc}m)`;
           gpsBadge.className = 'px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-700/60';
 
-          if (selectedRole === 'rider' && myUnitId && db && navigator.onLine) {
+          if (db && navigator.onLine && !isKickedByAdmin) {
             db.ref(`${DB_ROOT}/units/${myUnitId}`).update({
               lat: myLat,
               lng: myLng,
               accuracy: acc,
               online: true,
+              kicked: false,
               lastSeen: firebase.database.ServerValue.TIMESTAMP
             }).catch(() => {});
           }
@@ -2887,11 +2988,13 @@
     }
 
     function registerRiderPresence() {
+      isKickedByAdmin = false;
       const unitRef = db.ref(`${DB_ROOT}/units/${myUnitId}`);
+      myUnitRef = unitRef;
       const connectedRef = db.ref('.info/connected');
 
       connectedRef.on('value', (snap) => {
-        if (snap.val() === true) {
+        if (snap.val() === true && !isKickedByAdmin && selectedRole === 'rider') {
           unitRef.onDisconnect().update({
             online: false,
             lastSeen: firebase.database.ServerValue.TIMESTAMP
@@ -2906,6 +3009,7 @@
             status: currentStatus,
             activeCaseId: myActiveCaseId || '',
             online: true,
+            kicked: false,
             lastSeen: firebase.database.ServerValue.TIMESTAMP
           };
           if (myLat !== null && myLng !== null) {
@@ -2917,12 +3021,17 @@
       });
 
       unitRef.on('value', (snap) => {
+        if (selectedRole !== 'rider' || document.getElementById('setupModal') && !document.getElementById('setupModal').classList.contains('hidden')) {
+          return;
+        }
         const uData = snap.val();
-        if (!uData) return;
+        if (!uData) {
+          forceExitRiderByKick('您的執勤單位節點已被總站移除，系統已自動登出並停止定位。');
+          return;
+        }
 
-        if (uData.online === false && selectedRole === 'rider' && document.getElementById('setupModal').classList.contains('hidden')) {
-          alert('⚠️ 您的裝置已被總站管理員設為離線，請重新選擇車輛登入。');
-          reopenSetup();
+        if (uData.kicked === true || uData.online === false) {
+          forceExitRiderByKick('您已被總站管理員踢除並強制登出，GPS 定位回報已停止。');
           return;
         }
 
@@ -3039,12 +3148,12 @@
 
       Object.entries(allUnitsData).forEach(([unitId, unit]) => {
         if (unit.lat == null || unit.lng == null) return;
-        const isStale = !unit.online || (now - (unit.lastSeen || 0) > 180000);
-        if (isStale && unitId !== myUnitId) return;
+        const isOnline = isUnitCurrentlyOnline(unit, now);
+        if (!isOnline && unitId !== myUnitId) return;
 
         activeIds.add(unitId);
         const statusCfg = STATUS_CONFIG[unit.status] || STATUS_CONFIG.STANDBY;
-        const dotClass = isStale ? 'status-offline' : statusCfg.cssClass;
+        const dotClass = isOnline ? statusCfg.cssClass : 'status-offline';
         const unitType = unit.unitType || getUnitTypeByCallsign(unit.callsign);
         const typeEmoji = unitType === 'AMBULANCE' ? '🚑' : (unitType === 'STATION' ? '⛺' : '🏍️');
         const dotShapeClass = unitType === 'AMBULANCE' ? 'ems-marker-ambulance' : '';
@@ -3198,6 +3307,7 @@
     // 13. 一般用戶（機巡 / 救護車 / 救護站）：出勤、到達、送醫、到院、狀況回報
     // =========================================================================
     function updateRiderStatusUI(status, note) {
+      if (isKickedByAdmin) return;
       const badge = document.getElementById('riderCurrentStatusBadge');
       const noteEl = document.getElementById('riderLastNote');
       const timeEl = document.getElementById('riderLastTime');
@@ -3217,6 +3327,7 @@
     }
 
     function updateRiderActiveCaseBanner() {
+      if (isKickedByAdmin) return;
       const banner = document.getElementById('riderActiveCaseBanner');
       const c = myActiveCaseId ? allCasesData[myActiveCaseId] : null;
 
@@ -3324,7 +3435,7 @@
     }
 
     async function recordArrivalTimeOnly() {
-      if (!db || !currentUser || !myUnitId) return;
+      if (isKickedByAdmin || !db || !currentUser || !myUnitId) return;
 
       const labelText = '🏥 已到達現場';
       const noteText = '到達現場';
@@ -3397,6 +3508,7 @@
     }
 
     function openReportModal(targetStatus) {
+      if (isKickedByAdmin) return;
       pendingReportStatus = targetStatus;
       const modal = document.getElementById('reportModal');
       const title = document.getElementById('reportModalTitle');
@@ -3492,6 +3604,7 @@
     }
 
     async function pinCurrentLocationToActiveCase() {
+      if (isKickedByAdmin) return;
       if (!myActiveCaseId || !allCasesData[myActiveCaseId]) {
         alert('目前沒有執行中的案件可標定位置。');
         return;
@@ -3520,6 +3633,7 @@
     }
 
     async function submitStatusReport() {
+      if (isKickedByAdmin) return;
       const btn = document.getElementById('btnConfirmReport');
       btn.disabled = true;
 
@@ -3703,14 +3817,14 @@
     }
 
     // =========================================================================
-    // 14. 一般用戶：監聽總站派遣通知（支援同案重啟再次彈窗提醒）
+    // 14. 一般用戶：監聽總站派遣通知
     // =========================================================================
     function listenIncomingDispatch() {
       db.ref(`${DB_ROOT}/dispatches/${myVehicleCallsign}`).on('value', (snapshot) => {
+        if (isKickedByAdmin || selectedRole !== 'rider') return;
         const data = snapshot.val();
         if (!data || data.acknowledged) return;
 
-        // 組合 dispatchId 與 reopenedAt，確保同案重啟時也能再次彈窗
         const uniqueDispatchKey = `${data.dispatchId || ''}_${data.reopenedAt || data.timestamp || ''}`;
         if (lastHandledDispatchKey === uniqueDispatchKey) return;
 
@@ -3742,7 +3856,7 @@
     }
 
     async function acknowledgeDispatch(switchToDispatched, openGoogleMaps) {
-      if (!activeIncomingDispatch) return;
+      if (!activeIncomingDispatch || isKickedByAdmin) return;
       const d = activeIncomingDispatch;
       lastHandledDispatchKey = `${d.dispatchId || ''}_${d.reopenedAt || d.timestamp || ''}`;
       document.getElementById('incomingDispatchModal').classList.add('hidden');
@@ -3981,7 +4095,6 @@
       }
     }
 
-    // 修正：重啟案件時，同步更新受派單位 activeCaseId 與發送新通知，讓現場端即時跳出執行中案件
     async function adminReopenCase(caseId) {
       const c = allCasesData[caseId];
       if (!c) return;
@@ -4004,11 +4117,10 @@
         note: '重新開啟案件追蹤並同步通知執勤單位'
       });
 
-      // 同步更新原本指派的單位狀態與派遣通知，確保現場端立刻顯示執行中案件
       const assignedCallsigns = c.assignedUnits ? Object.keys(c.assignedUnits) : [];
       for (const callsign of assignedCallsigns) {
         Object.entries(allUnitsData || {}).forEach(([uid, u]) => {
-          if (u.callsign === callsign && u.online) {
+          if (u.callsign === callsign && isUnitCurrentlyOnline(u, nowMs)) {
             db.ref(`${DB_ROOT}/units/${uid}`).update({
               status: 'DISPATCHED',
               activeCaseId: caseId,
@@ -4291,9 +4403,9 @@
       const reporter = document.getElementById('radioReporterSelect').value;
       const actionCode = document.getElementById('radioActionSelect').value;
       const rawNoteText = document.getElementById('radioNoteTextarea').value.trim();
-      const destText = document.getElementById('radioTransportDest').value.trim();
-      const departTimeVal = document.getElementById('radioDepartTime').value;
-      const hospTimeVal = document.getElementById('radioHospitalTime').value;
+      const destVal = document.getElementById('radioTransportDest').value.trim();
+      const departTimeStr = document.getElementById('radioDepartTime').value;
+      const hospTimeStr = document.getElementById('radioHospitalTime').value;
       const bibVal = document.getElementById('radioBibInput').value.trim().toUpperCase();
       const triageVal = document.getElementById('radioTriageSelect').value;
       const fiveLevelVal = document.getElementById('radioFiveLevelSelect').value;
@@ -4301,183 +4413,212 @@
       const vsSummary = formatVitalSignSummary(vsObj);
       const syncUnit = document.getElementById('chkSyncUnitStatus').checked;
 
-      const extraNotes = [];
-      if (rawNoteText) extraNotes.push(rawNoteText);
-      if (bibVal) extraNotes.push(`號碼布:${bibVal}`);
-      if (actionCode !== 'AT_HOSPITAL' && actionCode !== 'TRANSPORT_BOTH' && triageVal) extraNotes.push(`現場分級:${triageVal}`);
-      if ((actionCode === 'AT_HOSPITAL' || actionCode === 'TRANSPORT_BOTH') && fiveLevelVal) extraNotes.push(`到院檢傷:${fiveLevelVal}`);
-      if (vsSummary) extraNotes.push(`[VS] ${vsSummary}`);
-      const fullExtraNote = extraNotes.join('｜');
-
       const nowMs = Date.now();
-      const caseUpdates = {};
-      if (destText) caseUpdates.transportDest = destText;
-      if (bibVal) caseUpdates.bibNumber = bibVal;
-      if (actionCode !== 'AT_HOSPITAL' && actionCode !== 'TRANSPORT_BOTH' && triageVal) caseUpdates.triage = triageVal;
-      if ((actionCode === 'AT_HOSPITAL' || actionCode === 'TRANSPORT_BOTH') && fiveLevelVal) caseUpdates.hospitalTriageLevel = fiveLevelVal;
-      if (vsObj) caseUpdates.latestVitalSign = vsObj;
+      const casePatch = {
+        [`assignedUnits/${reporter}`]: true
+      };
+      if (bibVal) casePatch.bibNumber = bibVal;
+      if (triageVal) casePatch.triage = triageVal;
+      if (fiveLevelVal) casePatch.hospitalTriageLevel = fiveLevelVal;
+      if (vsObj) casePatch.latestVitalSign = vsObj;
+      if (destVal) casePatch.transportDest = destVal;
 
-      if (actionCode === 'TRANSPORT_BOTH') {
-        const departMs = parseTodayTimeToMs(departTimeVal);
-        const hospMs = parseTodayTimeToMs(hospTimeVal);
-        caseUpdates.transportDepartedAt = departMs;
-        caseUpdates.arrivedHospitalAt = hospMs;
+      const metaParts = [];
+      if (bibVal) metaParts.push(`號碼布:${bibVal}`);
+      if (triageVal) metaParts.push(`現場分級:${triageVal}`);
+      if (fiveLevelVal) metaParts.push(`到院檢傷:${fiveLevelVal}`);
+      if (vsSummary) metaParts.push(`[VS] ${vsSummary}`);
 
+      if (actionCode === 'ARRIVED') {
+        if (!allCasesData[activeRadioCaseId].arrivedAt) casePatch.arrivedAt = nowMs;
+        const fullNote = [rawNoteText || '無線電回報已到達現場', ...metaParts].filter(Boolean).join('｜');
         await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
-          time: departMs,
-          actor: `${reporter}(無線電)`,
-          action: '🚑 無線電補登：救護車送醫出發',
-          note: [destText ? `後送目標：${destText}` : '', fullExtraNote].filter(Boolean).join('｜')
+          time: nowMs,
+          actor: reporter,
+          action: '🎙️ 無線電回報：已到達現場',
+          note: fullNote,
+          vitalSign: vsObj || null
         });
-
+        if (syncUnit) {
+          Object.entries(allUnitsData).forEach(([uid, u]) => {
+            if (u.callsign === reporter && isUnitCurrentlyOnline(u, nowMs)) {
+              db.ref(`${DB_ROOT}/units/${uid}`).update({ status: 'ARRIVED', lastNote: fullNote, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+            }
+          });
+        }
+      } else if (actionCode === 'TRANSPORTING') {
+        const depMs = departTimeStr ? parseTodayTimeToMs(departTimeStr) : nowMs;
+        casePatch.transportDepartedAt = depMs;
+        const fullNote = [
+          destVal ? `後送往「${destVal}」` : '救護車送醫出發',
+          rawNoteText,
+          ...metaParts
+        ].filter(Boolean).join('｜');
+        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
+          time: depMs,
+          actor: reporter,
+          action: '🚑 無線電回報：救護車送醫出發',
+          note: fullNote,
+          vitalSign: vsObj || null
+        });
+        if (syncUnit) {
+          Object.entries(allUnitsData).forEach(([uid, u]) => {
+            if (u.callsign === reporter && isUnitCurrentlyOnline(u, nowMs)) {
+              db.ref(`${DB_ROOT}/units/${uid}`).update({ status: 'TRANSPORTING', lastNote: fullNote, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+            }
+          });
+        }
+      } else if (actionCode === 'AT_HOSPITAL') {
+        const hospMs = hospTimeStr ? parseTodayTimeToMs(hospTimeStr) : nowMs;
+        casePatch.arrivedHospitalAt = hospMs;
+        const fullNote = [
+          destVal ? `抵達「${destVal}」` : '抵達醫院交接',
+          rawNoteText,
+          ...metaParts
+        ].filter(Boolean).join('｜');
         await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
           time: hospMs,
-          actor: `${reporter}(無線電)`,
-          action: '🏥 無線電補登：救護車抵達醫院',
-          note: [destText ? `抵達：${destText}` : '', fullExtraNote].filter(Boolean).join('｜'),
+          actor: reporter,
+          action: '🏥 無線電回報：救護車抵達醫院',
+          note: fullNote,
           vitalSign: vsObj || null
         });
-
-        if (syncUnit && reporter !== '總站無線電抄收') {
+        if (syncUnit) {
           Object.entries(allUnitsData).forEach(([uid, u]) => {
-            if (u.callsign === reporter && u.online) {
-              db.ref(`${DB_ROOT}/units/${uid}`).update({
-                status: 'AT_HOSPITAL',
-                lastNote: `[無線電補登] 已抵達 ${destText || '醫院'}`,
-                lastSeen: firebase.database.ServerValue.TIMESTAMP
-              });
+            if (u.callsign === reporter && isUnitCurrentlyOnline(u, nowMs)) {
+              db.ref(`${DB_ROOT}/units/${uid}`).update({ status: 'AT_HOSPITAL', lastNote: fullNote, lastSeen: firebase.database.ServerValue.TIMESTAMP });
             }
           });
         }
-      } else {
-        const actionLabels = {
-          NOTE: '🎙️ 無線電回報狀況',
-          ARRIVED: '🏥 無線電回報：已到達現場',
-          TREATING: '🩺 無線電回報：傷患處置中',
-          TRANSPORTING: '🚑 無線電回報：救護車送醫出發',
-          AT_HOSPITAL: '🏥 無線電回報：救護車抵達醫院',
-          CONTINUED: '🏃 無線電回報：處置完畢續跑'
-        };
-
-        let recordTimeMs = nowMs;
-        if (actionCode === 'TRANSPORTING' && departTimeVal) {
-          recordTimeMs = parseTodayTimeToMs(departTimeVal);
-          caseUpdates.transportDepartedAt = recordTimeMs;
-        } else if (actionCode === 'AT_HOSPITAL' && hospTimeVal) {
-          recordTimeMs = parseTodayTimeToMs(hospTimeVal);
-          caseUpdates.arrivedHospitalAt = recordTimeMs;
-        } else if (actionCode === 'ARRIVED' && !allCasesData[activeRadioCaseId].arrivedAt) {
-          caseUpdates.arrivedAt = nowMs;
-        }
-
-        const noteParts = [];
-        if (destText && (actionCode === 'TRANSPORTING' || actionCode === 'AT_HOSPITAL')) {
-          noteParts.push(`後送醫院/總站：${destText}`);
-        }
-        if (fullExtraNote) noteParts.push(fullExtraNote);
+      } else if (actionCode === 'TRANSPORT_BOTH') {
+        const depMs = departTimeStr ? parseTodayTimeToMs(departTimeStr) : nowMs;
+        const hospMs = hospTimeStr ? parseTodayTimeToMs(hospTimeStr) : nowMs;
+        casePatch.transportDepartedAt = depMs;
+        casePatch.arrivedHospitalAt = hospMs;
+        const destLabel = destVal || '醫院';
+        const commonMeta = [rawNoteText, ...metaParts].filter(Boolean).join('｜');
 
         await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
-          time: recordTimeMs,
-          actor: `${reporter}(無線電)`,
-          action: actionLabels[actionCode] || '🎙️ 無線電回報',
-          note: noteParts.join('｜'),
+          time: depMs,
+          actor: reporter,
+          action: '🚑 無線電補登：救護車送醫出發',
+          note: `送往「${destLabel}」${commonMeta ? `｜${commonMeta}` : ''}`,
           vitalSign: vsObj || null
         });
-
-        const statusMap = {
-          ARRIVED: 'ARRIVED',
-          TRANSPORTING: 'TRANSPORTING',
-          AT_HOSPITAL: 'AT_HOSPITAL'
-        };
-        if (syncUnit && statusMap[actionCode] && reporter !== '總站無線電抄收') {
+        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
+          time: hospMs,
+          actor: reporter,
+          action: '🏥 無線電補登：救護車抵達醫院',
+          note: `抵達「${destLabel}」${commonMeta ? `｜${commonMeta}` : ''}`,
+          vitalSign: vsObj || null
+        });
+        if (syncUnit) {
           Object.entries(allUnitsData).forEach(([uid, u]) => {
-            if (u.callsign === reporter && u.online) {
+            if (u.callsign === reporter && isUnitCurrentlyOnline(u, nowMs)) {
               db.ref(`${DB_ROOT}/units/${uid}`).update({
-                status: statusMap[actionCode],
-                lastNote: `[無線電代點] ${noteParts.join('｜') || actionLabels[actionCode]}`,
+                status: 'AT_HOSPITAL',
+                lastNote: `已抵達「${destLabel}」${commonMeta ? `｜${commonMeta}` : ''}`,
                 lastSeen: firebase.database.ServerValue.TIMESTAMP
               });
             }
           });
         }
+      } else if (actionCode === 'TREATING') {
+        const fullNote = [rawNoteText || '現場評估/包紮處置中', ...metaParts].filter(Boolean).join('｜');
+        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
+          time: nowMs,
+          actor: reporter,
+          action: '🩺 無線電回報：傷患處置中',
+          note: fullNote,
+          vitalSign: vsObj || null
+        });
+      } else if (actionCode === 'CONTINUED') {
+        const fullNote = [rawNoteText || '處置完畢，選手續跑', ...metaParts].filter(Boolean).join('｜');
+        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
+          time: nowMs,
+          actor: reporter,
+          action: '🏃 無線電回報：選手續跑',
+          note: fullNote,
+          vitalSign: vsObj || null
+        });
+      } else {
+        const fullNote = [rawNoteText || '無線電回報現場狀況', ...metaParts].filter(Boolean).join('｜');
+        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}/timeline`).push({
+          time: nowMs,
+          actor: reporter,
+          action: '🎙️ 無線電回報補述',
+          note: fullNote,
+          vitalSign: vsObj || null
+        });
       }
 
-      if (Object.keys(caseUpdates).length > 0) {
-        await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}`).update(caseUpdates);
-      }
-
+      await db.ref(`${DB_ROOT}/cases/${activeRadioCaseId}`).update(casePatch);
       closeRadioNoteModal();
     }
 
     // =========================================================================
-    // 18. 管理員模式：線上單位列表（含單機強制離線機制）
+    // 18. 管理員：線上單位列表（含過濾心跳逾時離線佔位、強制踢除與清理佔位）
     // =========================================================================
     function renderUnitsList() {
-      const container = document.getElementById('panelUnits');
+      const container = document.getElementById('unitsListContent') || document.getElementById('panelUnits');
+      if (!container) return;
       const now = Date.now();
 
-      const entries = Object.entries(allUnitsData)
-        .map(([id, u]) => ({
-          id,
-          ...u,
-          isOnlineActive: u.online && (now - (u.lastSeen || 0) < 180000)
-        }))
-        .sort((a, b) => {
-          if (a.isOnlineActive !== b.isOnlineActive) return b.isOnlineActive - a.isOnlineActive;
-          return a.callsign.localeCompare(b.callsign, 'zh-TW');
-        });
+      const onlineUnits = Object.entries(allUnitsData)
+        .filter(([, u]) => isUnitCurrentlyOnline(u, now))
+        .sort(([, a], [, b]) => String(a.callsign || '').localeCompare(String(b.callsign || ''), 'zh-TW'));
 
-      const onlineCount = entries.filter(u => u.isOnlineActive).length;
-      document.getElementById('onlineCount').textContent = onlineCount;
+      document.getElementById('onlineCount').textContent = onlineUnits.length;
 
-      if (entries.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>`;
+      if (onlineUnits.length === 0) {
+        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前尚無在線單位（逾 60 秒無心跳將自動離線）</div>`;
         return;
       }
 
-      container.innerHTML = entries.map((u) => {
+      container.innerHTML = onlineUnits.map(([unitId, u]) => {
         const cfg = STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY;
         const unitType = u.unitType || getUnitTypeByCallsign(u.callsign);
         const typeEmoji = unitType === 'AMBULANCE' ? '🚑' : (unitType === 'STATION' ? '⛺' : '🏍️');
-        const caseBadge = u.activeCaseId && allCasesData[u.activeCaseId]?.caseCode
-          ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 font-black text-[11px]">${escapeHtml(allCasesData[u.activeCaseId].caseCode)}</span>`
-          : '';
+        const activeCase = u.activeCaseId && allCasesData[u.activeCaseId];
+        const caseBadge = activeCase ? `<span class="px-1.5 py-0.5 rounded bg-red-700 text-yellow-200 font-black text-[10px]">${escapeHtml(activeCase.caseCode)}</span>` : '';
+        const secAgo = u.lastSeen ? Math.max(0, Math.round((now - u.lastSeen) / 1000)) : 0;
 
         return `
-          <div class="p-3 rounded-xl border ${u.isOnlineActive ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}">
+          <div class="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="w-2.5 h-2.5 rounded-full shrink-0 ${u.isOnlineActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}"></span>
-                <span class="font-bold text-white text-sm truncate">${typeEmoji} ${escapeHtml(u.callsign)}</span>
-                ${caseBadge}
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-black text-sm text-white">${typeEmoji} ${escapeHtml(u.callsign)}</span>
+                  ${u.personName ? `<span class="text-xs text-slate-300">(${escapeHtml(u.personName)})</span>` : ''}
+                  ${caseBadge}
+                </div>
+                <div class="text-[11px] text-slate-400 font-mono">
+                  裝置碼：${escapeHtml(u.deviceId || '未知')} · 心跳 ${secAgo}s 前
+                </div>
               </div>
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${cfg.cssClass}">
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold text-white shrink-0 ${cfg.cssClass}">
                 ${cfg.short}
               </span>
             </div>
 
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400 mt-1">
-              ${u.personName ? `<span>隊員：<b class="text-slate-200">${escapeHtml(u.personName)}</b></span>` : ''}
-              ${u.deviceId ? `<span class="font-mono text-slate-400">裝置碼：${escapeHtml(u.deviceId)}</span>` : ''}
-            </div>
+            ${u.lastNote ? `<div class="text-xs text-amber-200 bg-slate-900/80 rounded-lg px-2.5 py-1.5">💬 ${escapeHtml(u.lastNote)}</div>` : ''}
 
-            ${u.lastNote ? `<div class="text-xs text-slate-300 mt-1.5 bg-slate-900/70 px-2.5 py-1.5 rounded-lg border border-slate-700/60">📝 ${escapeHtml(u.lastNote)}</div>` : ''}
-
-            <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-700/60 gap-1.5">
-              <span class="text-[11px] text-slate-400 font-mono">更新：${u.lastSeen ? formatTimeStr(u.lastSeen) : '--'}</span>
-              <div class="flex items-center gap-1.5">
-                <button onclick="focusUnit('${u.id}')" class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-slate-200">
-                  📍 定位
-                </button>
-                <button onclick="openAdminDispatchModal('${escapeHtml(u.callsign)}', null, '', false, '', '')" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white">
-                  📢 派遣
-                </button>
-                ${u.isOnlineActive ? `
-                  <button onclick="forceKickUnitOffline('${u.id}', '${escapeHtml(u.callsign)}')" title="強制將此裝置設為離線"
-                    class="px-2 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-700 text-rose-200 text-xs font-bold">
-                    ⏏️ 離線
+            <div class="flex items-center justify-between gap-2 pt-1">
+              <div class="text-[11px] text-slate-400 font-mono">
+                ${u.lat != null ? `${Number(u.lat).toFixed(4)}, ${Number(u.lng).toFixed(4)}` : '無 GPS'}
+              </div>
+              <div class="flex gap-1.5">
+                ${u.lat != null ? `
+                  <button onclick="focusUnitOnMap('${unitId}')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-white">
+                    📍 定位
                   </button>
                 ` : ''}
+                <button onclick="openAdminDispatchModal('${escapeHtml(u.callsign)}', null, '', false, '', activeCase?.transportDest || '')" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white">
+                  📢 派案
+                </button>
+                <button onclick="forceUnitOffline('${unitId}')" class="px-2 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-xs font-semibold text-rose-200 border border-rose-700/60">
+                  ⏏️ 離線
+                </button>
               </div>
             </div>
           </div>
@@ -4485,155 +4626,183 @@
       }).join('');
     }
 
-    async function forceKickUnitOffline(unitId, callsign) {
-      if (!confirm(`確定要強制將「${callsign}」的此台裝置設為離線嗎？\n（適用於換班交接或前一支手機未按登出時釋放車號）`)) return;
+    function focusUnitOnMap(unitId) {
+      const u = allUnitsData[unitId];
+      if (!u || u.lat == null || u.lng == null || !map) return;
+      map.setView([u.lat, u.lng], 17);
+      if (markersMap[unitId]) markersMap[unitId].openPopup();
+    }
+
+    async function forceUnitOffline(unitId) {
+      const u = allUnitsData[unitId];
+      if (!u) return;
+      if (!confirm(`確定要將【${u.callsign}】（裝置：${u.deviceId || '未知'}）踢除並強制設為離線嗎？`)) return;
+
       await db.ref(`${DB_ROOT}/units/${unitId}`).update({
         online: false,
+        kicked: true,
+        activeCaseId: '',
+        kickedAt: firebase.database.ServerValue.TIMESTAMP,
         lastSeen: firebase.database.ServerValue.TIMESTAMP
       });
+
+      if (u.activeCaseId && allCasesData[u.activeCaseId] && u.callsign) {
+        await db.ref(`${DB_ROOT}/cases/${u.activeCaseId}/assignedUnits/${u.callsign}`).remove().catch(() => {});
+        await db.ref(`${DB_ROOT}/cases/${u.activeCaseId}/timeline`).push({
+          time: Date.now(),
+          actor: adminLevel === 'SUPER_ADMIN' ? '最高管理員' : '總站派遣員',
+          action: `⏏️ 強制離線 ${u.callsign}`,
+          note: `裝置 ${u.deviceId || '未知'} 已被總站踢除`
+        }).catch(() => {});
+      }
+      renderUnitsList();
+      renderAllMarkers();
+      renderVehicleSelectOptions();
     }
 
-    function focusUnit(unitId) {
-      const unit = allUnitsData[unitId];
-      if (!unit || unit.lat == null || unit.lng == null) {
-        alert('該單位尚未回傳 GPS 座標。');
+    async function cleanupStaleOfflineUnits() {
+      if (!db) return;
+      const now = Date.now();
+      const staleEntries = Object.entries(allUnitsData || {}).filter(([, u]) => !isUnitCurrentlyOnline(u, now));
+      if (staleEntries.length === 0) {
+        alert('目前沒有逾時或已離線的佔位單位。');
         return;
       }
-      if (map) {
-        map.setView([unit.lat, unit.lng], 17);
-        if (markersMap[unitId]) markersMap[unitId].openPopup();
+      if (!confirm(`偵測到 ${staleEntries.length} 筆已離線或逾時佔位單位，確定要清理標記為離線嗎？`)) return;
+
+      for (const [unitId] of staleEntries) {
+        await db.ref(`${DB_ROOT}/units/${unitId}`).update({
+          online: false,
+          activeCaseId: ''
+        }).catch(() => {});
       }
+      renderUnitsList();
+      renderAllMarkers();
+      renderVehicleSelectOptions();
+      alert(`✅ 已清理 ${staleEntries.length} 筆離線佔位紀錄。`);
     }
 
     // =========================================================================
-    // 19. 管理員模式：建立新案件並派遣 / 同案派遣 / 支援增派
+    // 19. 管理員：建立案件 / 同案派遣 / 支援增派
     // =========================================================================
-    function openAdminDispatchModal(defaultCallsign = '', prefillCoords = null, defaultNote = '', isSupport = false, existingCaseId = '', defaultDest = '') {
-      // 若地圖上已有預選大頭針且沒有另外帶座標，直接自動帶入該大頭針座標並清除暫存圖釘
-      if (!prefillCoords && draftDispatchCoords) {
-        prefillCoords = { ...draftDispatchCoords };
-        clearDraftDispatchPin();
-      }
-
-      pendingSupportCaseId = isSupport ? existingCaseId : '';
-      pendingDispatchCoords = prefillCoords ? { ...prefillCoords } : null;
-
-      const modal = document.getElementById('adminDispatchModal');
-      const titleEl = document.getElementById('adminDispatchModalTitle');
-      const btnEl = document.getElementById('btnSendDispatch');
-      const supportNotice = document.getElementById('supportCaseNotice');
+    function openAdminDispatchModal(preselectCallsign = '', coords = null, prefillNote = '', isSupport = false, supportCaseId = '', prefillDest = '') {
+      pendingSupportCaseId = isSupport ? supportCaseId : '';
       const select = document.getElementById('dispatchTargetSelect');
-      const noteInput = document.getElementById('adminDispatchNote');
-      const destInput = document.getElementById('inputAdminTransportDest');
-      const bibInput = document.getElementById('adminBibInput');
-      const triageSel = document.getElementById('adminTriageSelect');
-
-      const existingCase = (isSupport && existingCaseId && allCasesData[existingCaseId]) ? allCasesData[existingCaseId] : null;
-      bibInput.value = existingCase?.bibNumber || '';
-      triageSel.value = existingCase?.triage || '';
-
-      if (isSupport && existingCase) {
-        titleEl.textContent = `➕ 同案派遣 / 增派單位 (${existingCase.caseCode})`;
-        btnEl.textContent = `🚨 確認同案派遣 (${existingCase.caseCode})`;
-        supportNotice.textContent = `📌 沿用原案件編號 ${existingCase.caseCode}，可派遣救護車接駁後送或再次派遣同一單位前往處置！`;
-        supportNotice.classList.remove('hidden');
-      } else {
-        titleEl.textContent = '📢 建立新案件並派遣';
-        btnEl.textContent = '🚨 確認立案並派遣';
-        supportNotice.classList.add('hidden');
-      }
-
       const now = Date.now();
-      const onlineStatusMap = {};
-      const unitCoordsMap = {};
-      Object.values(allUnitsData).forEach(u => {
-        const active = u.online && (now - (u.lastSeen || 0) < 180000);
-        if (active) {
-          onlineStatusMap[u.callsign] = u.status;
-          if (u.lat != null && u.lng != null) {
-            unitCoordsMap[u.callsign] = { lat: u.lat, lng: u.lng };
-          }
-        }
-      });
 
-      const sortedUnits = [...PREDEFINED_UNITS].map(u => {
-        const coords = unitCoordsMap[u.callsign];
-        const dist = (pendingDispatchCoords && coords)
-          ? calculateDistanceMeters(pendingDispatchCoords.lat, pendingDispatchCoords.lng, coords.lat, coords.lng)
-          : null;
-        return { ...u, dist };
-      }).sort((a, b) => {
-        if (a.dist !== null && b.dist !== null) return a.dist - b.dist;
-        if (a.dist !== null) return -1;
-        if (b.dist !== null) return 1;
-        return 0;
-      });
+      const onlineCallsigns = new Set(
+        Object.values(allUnitsData)
+          .filter(u => isUnitCurrentlyOnline(u, now))
+          .map(u => u.callsign)
+      );
 
-      select.innerHTML = sortedUnits.map(u => {
-        const st = onlineStatusMap[u.callsign];
-        const statusTag = st ? `🟢線上(${(STATUS_CONFIG[st] || STATUS_CONFIG.STANDBY).short})` : '⚪未上線';
-        const distTag = u.dist !== null ? ` · 距事故點 ${formatDistance(u.dist)}` : '';
-        return `<option value="${u.callsign}" ${u.callsign === defaultCallsign ? 'selected' : ''}>${u.label} [${statusTag}${distTag}]</option>`;
+      const optionsHtml = PREDEFINED_UNITS.map(u => {
+        const isOnline = onlineCallsigns.has(u.callsign);
+        const statusTag = isOnline ? '🟢 在線' : '⚪ 離線';
+        return `<option value="${u.callsign}" ${preselectCallsign === u.callsign ? 'selected' : ''}>${u.label} (${statusTag})</option>`;
       }).join('');
 
-      noteInput.value = defaultNote || '';
-      destInput.value = defaultDest || '';
-      updateDispatchCoordsUI();
-      modal.classList.remove('hidden');
-    }
+      select.innerHTML = `<option value="">-- 請選擇派遣單位 --</option>` + optionsHtml;
+      if (preselectCallsign) select.value = preselectCallsign;
 
-    function updateDispatchCoordsUI() {
-      const display = document.getElementById('dispatchCoordsDisplay');
-      const clearBtn = document.getElementById('btnClearDispatchCoords');
-      const distHint = document.getElementById('dispatchDistanceHint');
-      if (pendingDispatchCoords) {
-        display.textContent = `已標定：${pendingDispatchCoords.lat.toFixed(5)}, ${pendingDispatchCoords.lng.toFixed(5)}`;
-        display.className = 'text-xs text-emerald-400 mb-2 font-mono font-bold';
-        clearBtn.classList.remove('hidden');
-        distHint.textContent = '已依距離排序單位';
+      document.getElementById('adminDispatchModalTitle').textContent = isSupport
+        ? `➕ 同案派遣 / 支援增派 (${allCasesData[supportCaseId]?.caseCode || ''})`
+        : '📢 建立新案件並派遣';
+
+      const noticeEl = document.getElementById('supportCaseNotice');
+      if (isSupport && allCasesData[supportCaseId]) {
+        const c = allCasesData[supportCaseId];
+        noticeEl.classList.remove('hidden');
+        noticeEl.textContent = `📌 將指派新單位支援既有案件 ${c.caseCode}（${getCaseDisplayTitle(c)}），共用同一案件編號與時間軸！`;
       } else {
-        display.textContent = '尚未標定目標座標（可直接點擊地圖放置大頭針）';
-        display.className = 'text-xs text-slate-400 mb-2 font-mono';
-        clearBtn.classList.add('hidden');
-        distHint.textContent = '';
+        noticeEl.classList.add('hidden');
       }
-    }
 
-    function clearDispatchCoords() {
-      pendingDispatchCoords = null;
-      updateDispatchCoordsUI();
-    }
+      document.getElementById('adminBibInput').value = (isSupport && allCasesData[supportCaseId]?.bibNumber) ? allCasesData[supportCaseId].bibNumber : '';
+      document.getElementById('adminTriageSelect').value = (isSupport && allCasesData[supportCaseId]?.triage) ? allCasesData[supportCaseId].triage : '';
+      document.getElementById('adminDispatchNote').value = isSupport ? '' : prefillNote;
+      document.getElementById('inputAdminTransportDest').value = prefillDest || '';
 
-    function promptManualCoords() {
-      const raw = prompt('請輸入事故點經緯度（格式：緯度, 經度）\n例如：23.00125, 120.21345');
-      if (!raw) return;
-      const parts = raw.split(',').map(s => parseFloat(s.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        pendingDispatchCoords = { lat: parts[0], lng: parts[1] };
-        updateDispatchCoordsUI();
+      if (coords && coords.lat != null && coords.lng != null) {
+        setDispatchCoords(coords.lat, coords.lng);
+      } else if (draftDispatchCoords) {
+        setDispatchCoords(draftDispatchCoords.lat, draftDispatchCoords.lng);
       } else {
-        alert('❌ 格式錯誤，請輸入「緯度, 經度」。');
+        clearDispatchCoords();
       }
+
+      select.onchange = updateDispatchDistanceHint;
+      updateDispatchDistanceHint();
+
+      document.getElementById('adminDispatchModal').classList.remove('hidden');
     }
 
     function closeAdminDispatchModal() {
       document.getElementById('adminDispatchModal').classList.add('hidden');
+      pendingSupportCaseId = '';
+    }
+
+    function setDispatchCoords(lat, lng) {
+      pendingDispatchCoords = { lat: Number(lat), lng: Number(lng) };
+      document.getElementById('dispatchCoordsDisplay').textContent =
+        `📍 ${pendingDispatchCoords.lat.toFixed(5)}, ${pendingDispatchCoords.lng.toFixed(5)}`;
+      document.getElementById('btnClearDispatchCoords').classList.remove('hidden');
+      updateDispatchDistanceHint();
+    }
+
+    function clearDispatchCoords() {
+      pendingDispatchCoords = null;
+      document.getElementById('dispatchCoordsDisplay').textContent = '尚未標定目標座標';
+      document.getElementById('dispatchDistanceHint').textContent = '';
+      document.getElementById('btnClearDispatchCoords').classList.add('hidden');
+    }
+
+    function updateDispatchDistanceHint() {
+      const hintEl = document.getElementById('dispatchDistanceHint');
+      const targetCallsign = document.getElementById('dispatchTargetSelect').value;
+      if (!pendingDispatchCoords || !targetCallsign) {
+        hintEl.textContent = '';
+        return;
+      }
+      const unitObj = Object.values(allUnitsData).find(u => u.callsign === targetCallsign && u.lat != null && u.lng != null);
+      if (!unitObj) {
+        hintEl.textContent = '';
+        return;
+      }
+      const dist = calculateDistanceMeters(unitObj.lat, unitObj.lng, pendingDispatchCoords.lat, pendingDispatchCoords.lng);
+      hintEl.textContent = dist !== null ? `直線約 ${formatDistance(dist)}` : '';
+    }
+
+    function promptManualCoords() {
+      const raw = prompt('請輸入緯度, 經度（例：23.0012, 120.2134）：');
+      if (!raw) return;
+      const parts = raw.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        setDispatchCoords(parts[0], parts[1]);
+        if (map) placeDraftDispatchPin(parts[0], parts[1], true);
+      } else {
+        alert('座標格式不正確，請輸入「緯度, 經度」。');
+      }
     }
 
     function appendDispatchText(text) {
-      const input = document.getElementById('adminDispatchNote');
-      input.value = input.value.trim() ? `${input.value.trim()}，${text}` : text;
+      const textarea = document.getElementById('adminDispatchNote');
+      textarea.value = textarea.value.trim() ? `${textarea.value.trim()}，${text}` : text;
     }
 
     async function sendAdminDispatch() {
       const targetCallsign = document.getElementById('dispatchTargetSelect').value;
-      const message = document.getElementById('adminDispatchNote').value.trim();
-      const destVal = document.getElementById('inputAdminTransportDest').value.trim();
+      const note = document.getElementById('adminDispatchNote').value.trim();
       const bibVal = document.getElementById('adminBibInput').value.trim().toUpperCase();
       const triageVal = document.getElementById('adminTriageSelect').value;
+      const destVal = document.getElementById('inputAdminTransportDest').value.trim();
 
-      if (!targetCallsign || !message) {
-        alert('請選擇派遣單位並填寫事故位置或狀況描述！');
+      if (!targetCallsign) {
+        alert('請先選擇要派遣的機巡、救護車或救護站！');
+        return;
+      }
+      if (!note && !pendingSupportCaseId) {
+        alert('請輸入事故公里數、地標或派遣任務內容！');
         return;
       }
 
@@ -4642,55 +4811,71 @@
 
       try {
         const nowMs = Date.now();
-        let targetCaseId = pendingSupportCaseId;
-        let targetCaseCode = '';
         const actorLabel = adminLevel === 'SUPER_ADMIN' ? '最高管理員' : '總站派遣員';
+        let caseId = pendingSupportCaseId;
+        let caseCode = '';
+        let finalLat = pendingDispatchCoords ? pendingDispatchCoords.lat : null;
+        let finalLng = pendingDispatchCoords ? pendingDispatchCoords.lng : null;
+        let finalSummary = note;
+        let finalDest = destVal;
 
-        if (targetCaseId && allCasesData[targetCaseId]) {
-          targetCaseCode = allCasesData[targetCaseId].caseCode;
-          const isAlreadyAssigned = Boolean(allCasesData[targetCaseId].assignedUnits && allCasesData[targetCaseId].assignedUnits[targetCallsign]);
-          const timelineNoteParts = [message];
-          if (bibVal) timelineNoteParts.push(`號碼布:${bibVal}`);
-          if (triageVal) timelineNoteParts.push(`初步分級:${triageVal}`);
-          if (destVal) timelineNoteParts.push(`後送醫院/總站:${destVal}`);
+        if (caseId && allCasesData[caseId]) {
+          const existing = allCasesData[caseId];
+          caseCode = existing.caseCode;
+          if (finalLat == null && existing.lat != null) finalLat = existing.lat;
+          if (finalLng == null && existing.lng != null) finalLng = existing.lng;
+          finalSummary = existing.summary || note;
+          if (!finalDest && existing.transportDest) finalDest = existing.transportDest;
 
-          const caseUpdates = {
+          const casePatch = {
+            status: 'ACTIVE',
             [`assignedUnits/${targetCallsign}`]: true
           };
-          if (bibVal) caseUpdates.bibNumber = bibVal;
-          if (triageVal) caseUpdates.triage = triageVal;
-          if (destVal) caseUpdates.transportDest = destVal;
-          if (pendingDispatchCoords) {
-            caseUpdates.lat = pendingDispatchCoords.lat;
-            caseUpdates.lng = pendingDispatchCoords.lng;
+          if (bibVal) casePatch.bibNumber = bibVal;
+          if (triageVal) casePatch.triage = triageVal;
+          if (finalDest) casePatch.transportDest = finalDest;
+          if (finalLat != null && finalLng != null) {
+            casePatch.lat = finalLat;
+            casePatch.lng = finalLng;
           }
 
-          await db.ref(`${DB_ROOT}/cases/${targetCaseId}`).update(caseUpdates);
-          await db.ref(`${DB_ROOT}/cases/${targetCaseId}/timeline`).push({
+          await db.ref(`${DB_ROOT}/cases/${caseId}`).update(casePatch);
+
+          const detailParts = [];
+          if (note) detailParts.push(note);
+          if (bibVal) detailParts.push(`號碼布:${bibVal}`);
+          if (triageVal) detailParts.push(`分級:${triageVal}`);
+          if (finalDest) detailParts.push(`後送:${finalDest}`);
+
+          await db.ref(`${DB_ROOT}/cases/${caseId}/timeline`).push({
             time: nowMs,
             actor: actorLabel,
-            action: isAlreadyAssigned ? `🔄 同案再次派遣 ${targetCallsign}` : `➕ 增派支援 ${targetCallsign}`,
-            note: timelineNoteParts.join('｜')
+            action: `📢 增派支援 → ${targetCallsign}`,
+            note: detailParts.join('｜') || '支援既有案件'
           });
         } else {
           const newCaseRef = db.ref(`${DB_ROOT}/cases`).push();
-          targetCaseId = newCaseRef.key;
-          targetCaseCode = generateNextCaseCode();
-          const initNoteParts = [message];
-          if (bibVal) initNoteParts.push(`號碼布:${bibVal}`);
-          if (triageVal) initNoteParts.push(`初步分級:${triageVal}`);
-          if (destVal) initNoteParts.push(`後送醫院/總站:${destVal}`);
+          caseId = newCaseRef.key;
+          caseCode = generateNextCaseCode();
+          finalSummary = note || '總站派遣案件';
+
+          const initDetail = [];
+          if (note) initDetail.push(note);
+          if (bibVal) initDetail.push(`號碼布:${bibVal}`);
+          if (triageVal) initDetail.push(`分級:${triageVal}`);
+          if (finalDest) initDetail.push(`後送:${finalDest}`);
 
           await newCaseRef.set({
-            caseCode: targetCaseCode,
+            caseCode: caseCode,
             status: 'ACTIVE',
-            summary: message,
+            summary: finalSummary,
             bibNumber: bibVal || '',
             triage: triageVal || '',
             hospitalTriageLevel: '',
-            transportDest: destVal || '',
-            lat: pendingDispatchCoords ? pendingDispatchCoords.lat : null,
-            lng: pendingDispatchCoords ? pendingDispatchCoords.lng : null,
+            latestVitalSign: null,
+            transportDest: finalDest || '',
+            lat: finalLat,
+            lng: finalLng,
             createdAt: nowMs,
             createdBy: actorLabel,
             assignedUnits: { [targetCallsign]: true },
@@ -4698,56 +4883,69 @@
               init: {
                 time: nowMs,
                 actor: actorLabel,
-                action: `📢 立案並派遣 ${targetCallsign}`,
-                note: initNoteParts.join('｜')
+                action: `📢 立案並派遣 → ${targetCallsign}`,
+                note: initDetail.join('｜')
               }
             }
           });
         }
 
-        const dispatchRef = db.ref(`${DB_ROOT}/dispatches/${targetCallsign}`);
-        await dispatchRef.set({
-          dispatchId: `${targetCaseId}_${nowMs}`,
+        const dispatchMessage = [
+          bibVal ? `[號碼布 ${bibVal}]` : '',
+          triageVal ? `[${triageVal}]` : '',
+          note || `支援案件 ${caseCode}（${finalSummary}）`
+        ].filter(Boolean).join(' ');
+
+        await db.ref(`${DB_ROOT}/dispatches/${targetCallsign}`).set({
+          dispatchId: `disp_${nowMs}`,
           targetCallsign: targetCallsign,
-          caseId: targetCaseId,
-          caseCode: targetCaseCode,
-          message: message,
-          transportDest: destVal || '',
-          targetLat: pendingDispatchCoords ? pendingDispatchCoords.lat : null,
-          targetLng: pendingDispatchCoords ? pendingDispatchCoords.lng : null,
+          caseId: caseId,
+          caseCode: caseCode,
+          message: dispatchMessage,
+          bibNumber: bibVal || '',
+          triage: triageVal || '',
+          transportDest: finalDest || '',
+          targetLat: finalLat,
+          targetLng: finalLng,
           acknowledged: false,
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
 
         Object.entries(allUnitsData).forEach(([uid, u]) => {
-          if (u.callsign === targetCallsign && u.online) {
+          if (u.callsign === targetCallsign && isUnitCurrentlyOnline(u, nowMs)) {
             db.ref(`${DB_ROOT}/units/${uid}`).update({
-              activeCaseId: targetCaseId
+              status: 'DISPATCHED',
+              activeCaseId: caseId,
+              lastNote: `[${caseCode}] ${dispatchMessage}`,
+              lastSeen: firebase.database.ServerValue.TIMESTAMP
             });
           }
         });
 
+        clearDraftDispatchPin();
         closeAdminDispatchModal();
         switchDispatchTab('cases');
-        alert(`✅ 已立案【${targetCaseCode}】並發送緊急派遣通知給「${targetCallsign}」！`);
+        alert(`✅ 已建立案件 ${caseCode} 並派遣至【${targetCallsign}】！`);
       } catch (err) {
-        alert('❌ 派遣發送失敗：' + err.message);
+        alert('❌ 派遣失敗：' + err.message);
       } finally {
         btn.disabled = false;
       }
     }
 
     // =========================================================================
-    // 20. 管理員模式：賽道固定站點標註管理
+    // 20. 管理員：賽道固定站點標註管理
     // =========================================================================
     function startAddPoiMode() {
+      clearDraftDispatchPin();
+      pendingPoiCoords = (map && map.getCenter) ? map.getCenter() : { lat: 23.0000, lng: 120.2100 };
       enterMapPickMode('poi');
     }
 
     function openPoiModal() {
+      selectPoiType('MEDICAL');
       document.getElementById('inputPoiName').value = '';
       document.getElementById('inputPoiNote').value = '';
-      selectPoiType('MEDICAL');
       document.getElementById('poiModal').classList.remove('hidden');
     }
 
@@ -4756,31 +4954,32 @@
       pendingPoiCoords = null;
     }
 
-    function selectPoiType(type) {
-      selectedPoiType = type;
+    function selectPoiType(typeKey) {
+      selectedPoiType = typeKey;
       document.querySelectorAll('.poi-type-btn').forEach(btn => {
-        if (btn.getAttribute('data-poitype') === type) {
-          btn.className = 'poi-type-btn p-2.5 rounded-xl border-2 border-teal-400 bg-teal-950/50 text-left text-xs font-bold text-white';
-        } else {
-          btn.className = 'poi-type-btn p-2.5 rounded-xl border-2 border-slate-700 bg-slate-800 text-left text-xs font-bold text-white';
-        }
+        const isSel = btn.getAttribute('data-poitype') === typeKey;
+        btn.className = isSel
+          ? 'poi-type-btn p-2.5 rounded-xl border-2 border-teal-400 bg-teal-950/50 text-left text-xs font-bold text-white'
+          : 'poi-type-btn p-2.5 rounded-xl border-2 border-slate-700 bg-slate-800 text-left text-xs font-bold text-white col-span-' + (btn.getAttribute('data-poitype') === 'TRAFFIC' ? '2' : '1');
       });
     }
 
     async function savePoiMarker() {
       const name = document.getElementById('inputPoiName').value.trim();
       const note = document.getElementById('inputPoiNote').value.trim();
-      if (!name || !pendingPoiCoords) {
-        alert('請填寫站點名稱（例如：救護總站、第1救護站）！');
+      if (!name) {
+        alert('請輸入站點名稱或里程標示（例如：救護總站、救護站 10K）！');
         return;
       }
+      const coords = pendingPoiCoords || (map ? map.getCenter() : { lat: 23.0, lng: 120.21 });
 
       await db.ref(`${DB_ROOT}/pois`).push({
         type: selectedPoiType,
         name: name,
         note: note,
-        lat: pendingPoiCoords.lat,
-        lng: pendingPoiCoords.lng,
+        lat: coords.lat,
+        lng: coords.lng,
+        createdBy: adminLevel === 'SUPER_ADMIN' ? '最高管理員' : '總站派遣員',
         createdAt: Date.now()
       });
 
@@ -4790,54 +4989,52 @@
 
     function renderPoisList() {
       const container = document.getElementById('poisListContainer');
-      const entries = Object.entries(allPoisData).map(([id, p]) => ({ id, ...p }));
-
+      const entries = Object.entries(allPoisData);
       if (entries.length === 0) {
         container.innerHTML = `<div class="text-center text-slate-500 text-sm py-6">尚未標註任何賽道站點</div>`;
         return;
       }
 
-      container.innerHTML = entries.map(p => {
-        const cfg = POI_TYPES[p.type] || POI_TYPES.MEDICAL;
+      container.innerHTML = entries.map(([poiId, p]) => {
+        const t = POI_TYPES[p.type] || POI_TYPES.MEDICAL;
         return `
-          <div class="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-2">
+          <div class="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-sm font-bold text-white truncate">${cfg.icon} ${escapeHtml(p.name)}</div>
-              <div class="text-[11px] text-slate-400 truncate">${cfg.label}${p.note ? ` · ${escapeHtml(p.note)}` : ''}</div>
+              <div class="font-bold text-sm text-white truncate">${t.icon} ${escapeHtml(p.name)}</div>
+              <div class="text-[11px] text-slate-400">${escapeHtml(t.label)}${p.note ? ` · ${escapeHtml(p.note)}` : ''}</div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button onclick="focusPoi('${p.id}')" class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white">定位</button>
-              <button onclick="deletePoi('${p.id}')" class="px-2 py-1 rounded bg-red-900/70 hover:bg-red-800 text-xs text-red-200">刪除</button>
+            <div class="flex gap-1.5 shrink-0">
+              <button onclick="focusPoiOnMap('${poiId}')" class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-white">📍</button>
+              <button onclick="deletePoi('${poiId}')" class="px-2 py-1 rounded-lg bg-red-900/70 hover:bg-red-800 text-xs text-red-200">刪除</button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    function focusPoi(poiId) {
+    function focusPoiOnMap(poiId) {
       const p = allPoisData[poiId];
-      if (!p || !map) return;
+      if (!p || p.lat == null || p.lng == null || !map) return;
       map.setView([p.lat, p.lng], 17);
       if (poiMarkersMap[poiId]) poiMarkersMap[poiId].openPopup();
     }
 
     async function deletePoi(poiId) {
-      if (!confirm('確定要刪除此站點標註嗎？')) return;
+      if (!confirm('確定要移除此站點標註嗎？')) return;
       await db.ref(`${DB_ROOT}/pois/${poiId}`).remove();
     }
 
     // =========================================================================
-    // 21. 最高權限管理員：賽事結束匯出報表與全隊清空精靈
+    // 21. 最高權限管理員：賽事結束結算 CSV 匯出與全隊清空重置
     // =========================================================================
     function openEndEventModal() {
       if (adminLevel !== 'SUPER_ADMIN') {
-        alert('⛔ 權限不足：僅「最高權限管理員」可執行賽事結束結算與資料清空。');
+        alert('⛔ 權限不足：僅「最高權限管理員」可執行賽事結束結算與清空。');
         return;
       }
       document.getElementById('endEventAdminPin').value = '';
       document.getElementById('chkAlsoClearPois').checked = false;
-      const badge = document.getElementById('csvExportedBadge');
-      if (badge) badge.classList.toggle('hidden', !hasExportedCsvThisSession);
+      updateCsvExportedBadgeUI();
       document.getElementById('endEventModal').classList.remove('hidden');
     }
 
@@ -4845,72 +5042,120 @@
       document.getElementById('endEventModal').classList.add('hidden');
     }
 
-    function exportCasesCSV() {
-      const cases = Object.values(allCasesData).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      if (cases.length === 0) {
-        alert('目前尚無任何救護案件紀錄可供匯出。');
-        return;
+    function updateCsvExportedBadgeUI() {
+      const badge = document.getElementById('csvExportedBadge');
+      if (badge) {
+        badge.classList.toggle('hidden', !hasExportedCsvThisSession);
       }
+    }
+
+    function escapeCsvCell(val) {
+      const str = String(val == null ? '' : val);
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+
+    function exportCasesCSV() {
+      const sortedCases = Object.entries(allCasesData)
+        .map(([id, c]) => ({ id, ...c }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
       const headers = [
-        '案件編號', '案件狀態', '合併去向', '跑者號碼布', '現場分級(A1-A3)', '到院五級檢傷', '最新Vital Sign',
-        '案件摘要', '派遣與支援單位', '後送醫院/總站',
-        '發生時間', '到達現場時間', '送醫出發時間', '抵達醫院時間', '結案時間',
-        '處理總分鐘數', '事故點緯度', '事故點經度', '完整時間軸明細'
+        '案件編號',
+        '號碼布',
+        '現場分級(A1-A3)',
+        '到院檢傷(五級)',
+        '最新Vital Sign',
+        '案件狀態',
+        '併入主案號',
+        '事故摘要',
+        '後送醫院/總站',
+        '派遣/支援單位',
+        '發生時間',
+        '到達現場時間',
+        '送醫出發時間',
+        '抵達醫院時間',
+        '結案時間',
+        '緯度',
+        '經度',
+        '完整時間軸明細'
       ];
 
-      const rows = cases.map(c => {
-        const statusStr = c.mergedIntoCaseCode ? `已併入${c.mergedIntoCaseCode}` : (c.status === 'CLOSED' ? '已結案' : '進行中');
-        const unitsStr = c.assignedUnits ? Object.keys(c.assignedUnits).join(' / ') : '';
-        const vsStr = formatVitalSignSummary(c.latestVitalSign);
-        const createdStr = c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW', { hour12: false }) : '';
-        const arrivedStr = c.arrivedAt ? new Date(c.arrivedAt).toLocaleString('zh-TW', { hour12: false }) : '';
-        const departStr = c.transportDepartedAt ? new Date(c.transportDepartedAt).toLocaleString('zh-TW', { hour12: false }) : '';
-        const hospStr = c.arrivedHospitalAt ? new Date(c.arrivedHospitalAt).toLocaleString('zh-TW', { hour12: false }) : '';
-        const closedStr = c.closedAt ? new Date(c.closedAt).toLocaleString('zh-TW', { hour12: false }) : '';
-        const durationMin = (c.createdAt && c.closedAt) ? Math.max(1, Math.round((c.closedAt - c.createdAt) / 60000)) : '';
+      const rows = sortedCases.map(c => {
+        const unitsText = c.assignedUnits ? Object.keys(c.assignedUnits).join(' / ') : '';
+        const statusText = c.mergedIntoCaseCode
+          ? `已併入 ${c.mergedIntoCaseCode}`
+          : (c.status === 'ACTIVE' ? '進行中' : '已結案');
 
-        const timelineItems = c.timeline ? Object.values(c.timeline).sort((a, b) => (a.time || 0) - (b.time || 0)) : [];
-        const timelineStr = timelineItems.map(t => `[${formatTimeStr(t.time)} ${t.actor}] ${t.action}${t.note ? ':' + t.note : ''}`).join(' | ');
+        const timelineArr = c.timeline
+          ? Object.values(c.timeline)
+              .sort((a, b) => (a.time || 0) - (b.time || 0))
+              .map(t => `${formatTimeStr(t.time)} [${t.actor}] ${t.action}${t.note ? `(${t.note})` : ''}`)
+          : [];
 
         return [
           c.caseCode || '',
-          statusStr,
-          c.mergedIntoCaseCode || '',
           c.bibNumber || '',
           c.triage || '',
           c.hospitalTriageLevel || '',
-          vsStr,
+          formatVitalSignSummary(c.latestVitalSign),
+          statusText,
+          c.mergedIntoCaseCode || '',
           c.summary || '',
-          unitsStr,
           c.transportDest || '',
-          createdStr,
-          arrivedStr,
-          departStr,
-          hospStr,
-          closedStr,
-          durationMin,
-          c.lat ?? '',
-          c.lng ?? '',
-          timelineStr
-        ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+          unitsText,
+          c.createdAt ? formatTimeStr(c.createdAt) : '',
+          c.arrivedAt ? formatTimeStr(c.arrivedAt) : '',
+          c.transportDepartedAt ? formatTimeStr(c.transportDepartedAt) : '',
+          c.arrivedHospitalAt ? formatTimeStr(c.arrivedHospitalAt) : '',
+          c.closedAt ? formatTimeStr(c.closedAt) : '',
+          c.lat != null ? c.lat : '',
+          c.lng != null ? c.lng : '',
+          timelineArr.join(' -> ')
+        ].map(escapeCsvCell).join(',');
       });
 
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+      const unitHeaders = [
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+        '=== 執勤人員與裝置碼稽核表 ===',
+        '單位呼號', '隊員姓名/代號', '裝置碼', '單位類型', '目前狀態', '最後上線時間', '最後位置(緯,經)'
+      ];
+      const unitRows = Object.values(allUnitsData || {})
+        .sort((a, b) => String(a.callsign || '').localeCompare(String(b.callsign || ''), 'zh-TW'))
+        .map(u => [
+          '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+          '',
+          u.callsign || '',
+          u.personName || '',
+          u.deviceId || '',
+          u.unitType || '',
+          (STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY).short,
+          u.lastSeen ? formatTimeStr(u.lastSeen) : '',
+          (u.lat != null && u.lng != null) ? `${u.lat}, ${u.lng}` : ''
+        ].map(escapeCsvCell).join(','));
+
+      const csvContent = '\uFEFF' + [
+        headers.map(escapeCsvCell).join(','),
+        ...rows,
+        '',
+        unitHeaders.map(escapeCsvCell).join(','),
+        ...unitRows
+      ].join('\r\n');
+
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
+      const now = new Date();
+      const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+
       const a = document.createElement('a');
-      const dateStr = new Date().toISOString().slice(0, 10);
       a.href = url;
-      a.download = `心動力救護派遣紀錄_${dateStr}.csv`;
+      a.download = `心動力救護案件追蹤總表_${stamp}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
       hasExportedCsvThisSession = true;
-      const badge = document.getElementById('csvExportedBadge');
-      if (badge) badge.classList.remove('hidden');
+      updateCsvExportedBadgeUI();
     }
 
     async function executeEndEventReset() {
@@ -4922,44 +5167,59 @@
       const pin = document.getElementById('endEventAdminPin').value.trim();
       const verified = await verifyAdminLevel(pin);
       if (verified !== 'SUPER_ADMIN') {
-        alert('❌ 最高權限管理員密碼錯誤！');
+        alert('❌ 請輸入正確的「最高權限管理員密碼」才能執行清空！');
+        document.getElementById('endEventAdminPin').value = '';
+        document.getElementById('endEventAdminPin').focus();
         return;
       }
 
-      const existingCaseCount = Object.keys(allCasesData || {}).length;
-      if (existingCaseCount > 0 && !hasExportedCsvThisSession) {
-        const proceedWithoutExport = confirm(
-          `⚠️ 注意：系統偵測到目前尚有 ${existingCaseCount} 筆救護案件紀錄，且您本次尚未點擊「匯出案件追蹤總表 (.csv)」。\n\n若直接清空將無法復原案件與時間軸紀錄！確定仍要略過匯出並直接清空嗎？`
+      if (!hasExportedCsvThisSession) {
+        const proceedWithoutCsv = confirm(
+          '⚠️ 尚未偵測到您在本階段匯出 CSV 報表！\n\n一旦清空資料，所有案件編號與時間軸將無法復原。\n確定要「略過匯出、直接清空所有資料」嗎？'
         );
-        if (!proceedWithoutExport) return;
+        if (!proceedWithoutCsv) return;
       }
 
-      const clearPois = document.getElementById('chkAlsoClearPois').checked;
-      const confirmMsg = '⚠️ 最終確認：確定要清空本場賽事所有案件、派遣通知與單位紀錄，並強制所有人員手機登出停止追蹤嗎？';
-      if (!confirm(confirmMsg)) return;
+      const alsoClearPois = document.getElementById('chkAlsoClearPois').checked;
+      const confirmText = alsoClearPois
+        ? '⚠️ 最終確認：即將清空「所有案件、派遣、單位定位與固定站點」，並強制所有在線人員登出，確定執行嗎？'
+        : '⚠️ 最終確認：即將清空「所有案件、派遣與單位定位」，並強制所有在線人員登出（保留固定站點），確定執行嗎？';
+      if (!confirm(confirmText)) return;
 
       const btn = document.getElementById('btnExecuteEndEventReset');
       btn.disabled = true;
 
       try {
-        clearDraftDispatchPin();
-        await db.ref(`${DB_ROOT}/cases`).remove();
-        await db.ref(`${DB_ROOT}/dispatches`).remove();
-        await db.ref(`${DB_ROOT}/logs`).remove();
-        await db.ref(`${DB_ROOT}/units`).remove();
-        if (clearPois) {
-          await db.ref(`${DB_ROOT}/pois`).remove();
+        const nowMs = Date.now();
+        const updates = {};
+        updates[`${DB_ROOT}/cases`] = null;
+        updates[`${DB_ROOT}/dispatches`] = null;
+        updates[`${DB_ROOT}/logs`] = null;
+        updates[`${DB_ROOT}/units`] = null;
+        if (alsoClearPois) {
+          updates[`${DB_ROOT}/pois`] = null;
         }
+        updates[`${DB_ROOT}/meta/lastResetAt`] = nowMs;
 
-        const resetNow = Date.now();
-        lastKnownResetAt = resetNow;
-        await db.ref(`${DB_ROOT}/meta`).update({
-          lastResetAt: resetNow
-        });
+        await db.ref().update(updates);
 
+        allCasesData = {};
+        allUnitsData = {};
+        if (alsoClearPois) allPoisData = {};
         hasExportedCsvThisSession = false;
+        updateCsvExportedBadgeUI();
+
+        clearDraftDispatchPin();
+        renderCasePins();
+        renderAllMarkers();
+        if (alsoClearPois) renderPoiPins();
+        renderCasesList();
+        renderUnitsList();
+        if (alsoClearPois) renderPoisList();
+        renderVehicleSelectOptions();
+
         closeEndEventModal();
-        alert('✅ 本場賽事資料已全數清空，所有線上人員手機已自動登出並停止 GPS 追蹤！');
+        alert('✅ 賽事資料已清空，所有在線人員已收到強制登出通知！');
       } catch (err) {
         alert('❌ 清空資料失敗：' + err.message);
       } finally {
@@ -4968,28 +5228,86 @@
     }
 
     // =========================================================================
-    // 22. 大螢幕即時戰情看板渲染與控制
+    // 22. 大螢幕即時戰情看板（唯讀統計 + 篩選 + 同步地圖）
     // =========================================================================
     function openLiveBoardView() {
       const boardView = document.getElementById('liveBoardView');
-      const mapEl = document.getElementById('map');
-      const boardMapSlot = document.getElementById('boardMapSlot');
-
-      document.getElementById('riderControlPanel').classList.add('hidden');
-      document.getElementById('dispatchDashboard').classList.add('hidden');
-      document.getElementById('adminMapSearchContainer').classList.add('hidden');
-      document.getElementById('btnTestAlert').classList.add('hidden');
-
+      if (!boardView) return;
       boardView.classList.remove('hidden');
+      mountBoardMap();
+      renderLiveBoardDashboard();
+      startBoardClock();
+    }
 
-      if (boardShowMap && mapEl && boardMapSlot) {
-        boardMapSlot.classList.remove('hidden');
-        boardMapSlot.appendChild(mapEl);
-        setTimeout(() => { if (map) map.invalidateSize(); }, 250);
-      } else if (boardMapSlot) {
-        boardMapSlot.classList.add('hidden');
+    function closeLiveBoardView() {
+      const boardView = document.getElementById('liveBoardView');
+      if (boardView) boardView.classList.add('hidden');
+      if (boardClockTimer) {
+        clearInterval(boardClockTimer);
+        boardClockTimer = null;
       }
+      unmountBoardMapToMain();
+    }
 
+    function mountBoardMap() {
+      const mapEl = document.getElementById('map');
+      const boardSlot = document.getElementById('boardMapSlot');
+      if (!mapEl || !boardSlot) return;
+
+      boardSlot.classList.toggle('hidden', !boardShowMap);
+      if (boardShowMap && mapEl.parentElement !== boardSlot) {
+        boardSlot.appendChild(mapEl);
+      }
+      if (map && boardShowMap) {
+        setTimeout(() => map.invalidateSize(true), 120);
+      }
+    }
+
+    function unmountBoardMapToMain() {
+      const mapEl = document.getElementById('map');
+      const mainEl = document.querySelector('main');
+      if (!mapEl || !mainEl) return;
+
+      if (mapEl.parentElement !== mainEl) {
+        mainEl.insertBefore(mapEl, mainEl.firstChild);
+      }
+      if (map) {
+        setTimeout(() => map.invalidateSize(true), 120);
+      }
+    }
+
+    function toggleBoardMapSplit() {
+      boardShowMap = !boardShowMap;
+      const btn = document.getElementById('btnToggleBoardMap');
+      if (btn) {
+        btn.textContent = boardShowMap ? '🗺️ 顯示地圖：開' : '🗺️ 顯示地圖：關';
+        btn.className = boardShowMap
+          ? 'px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-600'
+          : 'px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700';
+      }
+      mountBoardMap();
+    }
+
+    function setBoardCaseMode(mode) {
+      boardCaseMode = mode;
+      const allBtn = document.getElementById('boardModeAll');
+      const actBtn = document.getElementById('boardModeActive');
+      const clsBtn = document.getElementById('boardModeClosed');
+
+      if (allBtn) allBtn.className = mode === 'ALL'
+        ? 'px-3 py-1 rounded-lg text-xs font-black bg-cyan-600 text-white transition'
+        : 'px-3 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-700 transition';
+      if (actBtn) actBtn.className = mode === 'ACTIVE'
+        ? 'px-3 py-1 rounded-lg text-xs font-black bg-red-600 text-white transition'
+        : 'px-3 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-700 transition';
+      if (clsBtn) clsBtn.className = mode === 'CLOSED'
+        ? 'px-3 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white transition'
+        : 'px-3 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-700 transition';
+
+      renderLiveBoardDashboard();
+    }
+
+    function startBoardClock() {
       if (boardClockTimer) clearInterval(boardClockTimer);
       const updateClock = () => {
         const el = document.getElementById('boardLiveClock');
@@ -4997,182 +5315,151 @@
       };
       updateClock();
       boardClockTimer = setInterval(updateClock, 1000);
-
-      updateBoardSetupUiState();
-      renderLiveBoardDashboard();
-    }
-
-    function closeLiveBoardView() {
-      const boardView = document.getElementById('liveBoardView');
-      const mapEl = document.getElementById('map');
-      const mainEl = document.querySelector('main');
-
-      if (boardClockTimer) {
-        clearInterval(boardClockTimer);
-        boardClockTimer = null;
-      }
-
-      if (boardView) boardView.classList.add('hidden');
-      if (mapEl && mainEl && mapEl.parentElement !== mainEl) {
-        mainEl.insertBefore(mapEl, mainEl.firstChild);
-        setTimeout(() => { if (map) map.invalidateSize(); }, 250);
-      }
-    }
-
-    function toggleBoardMapSplit() {
-      boardShowMap = !boardShowMap;
-      const btn = document.getElementById('btnToggleBoardMap');
-      const boardMapSlot = document.getElementById('boardMapSlot');
-      const mapEl = document.getElementById('map');
-
-      if (boardShowMap) {
-        btn.textContent = '🗺️ 顯示地圖：開';
-        boardMapSlot.classList.remove('hidden');
-        if (mapEl && boardMapSlot) boardMapSlot.appendChild(mapEl);
-        setTimeout(() => { if (map) map.invalidateSize(); }, 250);
-      } else {
-        btn.textContent = '🗺️ 顯示地圖：關';
-        boardMapSlot.classList.add('hidden');
-      }
-    }
-
-    function setBoardCaseMode(mode) {
-      boardCaseMode = mode;
-      const btnAll = document.getElementById('boardModeAll');
-      const btnActive = document.getElementById('boardModeActive');
-      const btnClosed = document.getElementById('boardModeClosed');
-
-      [btnAll, btnActive, btnClosed].forEach(b => {
-        if (b) b.className = 'px-3 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-700 transition';
-      });
-
-      if (mode === 'ALL' && btnAll) {
-        btnAll.className = 'px-3 py-1 rounded-lg text-xs font-black bg-cyan-600 text-white transition';
-      } else if (mode === 'ACTIVE' && btnActive) {
-        btnActive.className = 'px-3 py-1 rounded-lg text-xs font-black bg-red-600 text-white transition';
-      } else if (mode === 'CLOSED' && btnClosed) {
-        btnClosed.className = 'px-3 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white transition';
-      }
-
-      renderLiveBoardDashboard();
     }
 
     function renderLiveBoardDashboard() {
-      if (!boardEnabled) {
-        updateBoardSetupUiState();
-        return;
-      }
+      if (selectedRole !== 'board') return;
 
-      const allEntries = Object.entries(allCasesData || {})
-        .map(([id, c]) => ({ id, ...c }))
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-      const validCases = allEntries.filter(c => !c.mergedIntoCaseCode);
-      const activeCases = validCases.filter(c => c.status === 'ACTIVE');
-      const closedCases = validCases.filter(c => c.status === 'CLOSED');
-
-      const countA1 = validCases.filter(c => c.triage === 'A1').length;
-      const countA2 = validCases.filter(c => c.triage === 'A2').length;
-      const countA3 = validCases.filter(c => c.triage === 'A3').length;
-
-      const lvl1 = validCases.filter(c => c.hospitalTriageLevel === '第一級').length;
-      const lvl2 = validCases.filter(c => c.hospitalTriageLevel === '第二級').length;
-      const lvl3 = validCases.filter(c => c.hospitalTriageLevel === '第三級').length;
-      const lvl4 = validCases.filter(c => c.hospitalTriageLevel === '第四級').length;
-      const lvl5 = validCases.filter(c => c.hospitalTriageLevel === '第五級').length;
-      const hospitalTriagedTotal = lvl1 + lvl2 + lvl3 + lvl4 + lvl5;
+      updateBoardSetupUiState();
+      if (!boardEnabled) return;
 
       const now = Date.now();
-      const onlineUnits = Object.values(allUnitsData || {}).filter(u => u.online && (now - (u.lastSeen || 0) < 180000));
-      const transportingCount = onlineUnits.filter(u => u.status === 'TRANSPORTING').length;
+      const allCases = Object.entries(allCasesData || {}).map(([id, c]) => ({ id, ...c }));
+      const validCases = allCases.filter(c => !c.mergedIntoCaseId);
 
-      document.getElementById('boardCntAll').textContent = validCases.length;
-      document.getElementById('boardCntActive').textContent = activeCases.length;
-      document.getElementById('boardCntClosed').textContent = closedCases.length;
+      const activeCases = validCases.filter(c => c.status === 'ACTIVE');
+      const closedCases = validCases.filter(c => c.status !== 'ACTIVE');
 
-      document.getElementById('statTotalPatients').textContent = validCases.length;
-      document.getElementById('statActiveCases').textContent = activeCases.length;
-      document.getElementById('statClosedCases').textContent = closedCases.length;
-      document.getElementById('statA1').textContent = countA1;
-      document.getElementById('statA2').textContent = countA2;
-      document.getElementById('statA3').textContent = countA3;
-      document.getElementById('statHospitalTriaged').textContent = hospitalTriagedTotal;
-      document.getElementById('statTransportAndUnits').textContent = `${transportingCount} / ${onlineUnits.length}`;
+      let cntA1 = 0, cntA2 = 0, cntA3 = 0;
+      let cntLvl1 = 0, cntLvl2 = 0, cntLvl3 = 0, cntLvl4 = 0, cntLvl5 = 0;
+      let hospitalTriagedCount = 0;
 
-      document.getElementById('statLvl1').textContent = lvl1;
-      document.getElementById('statLvl2').textContent = lvl2;
-      document.getElementById('statLvl3').textContent = lvl3;
-      document.getElementById('statLvl4').textContent = lvl4;
-      document.getElementById('statLvl5').textContent = lvl5;
+      validCases.forEach(c => {
+        if (c.triage === 'A1') cntA1++;
+        else if (c.triage === 'A2') cntA2++;
+        else if (c.triage === 'A3') cntA3++;
 
-      let displayList = validCases;
-      if (boardCaseMode === 'ACTIVE') displayList = activeCases;
-      if (boardCaseMode === 'CLOSED') displayList = closedCases;
+        if (c.hospitalTriageLevel) {
+          hospitalTriagedCount++;
+          if (c.hospitalTriageLevel === '第一級') cntLvl1++;
+          else if (c.hospitalTriageLevel === '第二級') cntLvl2++;
+          else if (c.hospitalTriageLevel === '第三級') cntLvl3++;
+          else if (c.hospitalTriageLevel === '第四級') cntLvl4++;
+          else if (c.hospitalTriageLevel === '第五級') cntLvl5++;
+        }
+      });
+
+      const onlineUnitsList = Object.values(allUnitsData || {}).filter(u => isUnitCurrentlyOnline(u, now));
+      const transportingCount = onlineUnitsList.filter(u => u.status === 'TRANSPORTING').length;
+
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(val);
+      };
+
+      setText('boardCntAll', validCases.length);
+      setText('boardCntActive', activeCases.length);
+      setText('boardCntClosed', closedCases.length);
+
+      setText('statTotalPatients', validCases.length);
+      setText('statActiveCases', activeCases.length);
+      setText('statClosedCases', closedCases.length);
+      setText('statA1', cntA1);
+      setText('statA2', cntA2);
+      setText('statA3', cntA3);
+      setText('statHospitalTriaged', hospitalTriagedCount);
+      setText('statTransportAndUnits', `${transportingCount} / ${onlineUnitsList.length}`);
+
+      setText('statLvl1', cntLvl1);
+      setText('statLvl2', cntLvl2);
+      setText('statLvl3', cntLvl3);
+      setText('statLvl4', cntLvl4);
+      setText('statLvl5', cntLvl5);
+
+      const displayList = validCases
+        .filter(c => {
+          if (boardCaseMode === 'ACTIVE') return c.status === 'ACTIVE';
+          if (boardCaseMode === 'CLOSED') return c.status !== 'ACTIVE';
+          return true;
+        })
+        .sort((a, b) => {
+          if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+          if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
 
       const grid = document.getElementById('boardCasesGrid');
       if (!grid) return;
 
       if (displayList.length === 0) {
-        grid.innerHTML = `<div class="text-center text-slate-500 text-sm py-12 col-span-full">目前此檢視模式下尚無案件資料</div>`;
+        grid.innerHTML = `<div class="text-center text-slate-500 text-sm py-12 col-span-full">目前此篩選條件下無案件資料</div>`;
         return;
       }
 
       grid.innerHTML = displayList.map(c => {
-        const isClosed = c.status === 'CLOSED';
+        const isActive = c.status === 'ACTIVE';
         const unitsList = c.assignedUnits ? Object.keys(c.assignedUnits) : [];
-        const vsText = boardMaskSensitive ? '' : formatVitalSignSummary(c.latestVitalSign);
+        const vsText = formatVitalSignSummary(c.latestVitalSign);
         const maskedBib = maskBibNumber(c.bibNumber);
-        const timelineItems = c.timeline ? Object.values(c.timeline).sort((a, b) => (a.time || 0) - (b.time || 0)) : [];
-        const latestEvent = timelineItems.length ? timelineItems[timelineItems.length - 1] : null;
-        const latestNoteText = boardMaskSensitive
-          ? (latestEvent ? `${latestEvent.action}` : '')
-          : (latestEvent ? `${latestEvent.action}${latestEvent.note ? '：' + latestEvent.note : ''}` : '');
+        const cardBorder = isActive
+          ? 'bg-red-950/25 border-red-500/70'
+          : 'bg-slate-900/90 border-slate-700/80';
+
+        const timelineItems = c.timeline
+          ? Object.values(c.timeline).sort((a, b) => (a.time || 0) - (b.time || 0)).slice(-4)
+          : [];
+
+        const miniTimelineHtml = timelineItems.map(item => `
+          <div class="text-[11px] text-slate-300 truncate">
+            <span class="font-mono text-slate-400">${formatShortTime(item.time)}</span>
+            <span class="font-bold text-amber-300">[${escapeHtml(item.actor)}]</span>
+            <span>${escapeHtml(item.action)}</span>
+          </div>
+        `).join('');
 
         return `
-          <div class="p-3.5 rounded-2xl border flex flex-col justify-between ${isClosed ? 'bg-slate-900/75 border-slate-700/80' : 'bg-red-950/30 border-red-500/70 shadow-lg shadow-red-950/20'}">
+          <div class="rounded-2xl border p-3.5 flex flex-col justify-between gap-2 ${cardBorder}">
             <div>
-              <div class="flex items-center justify-between gap-2 mb-2">
+              <div class="flex items-center justify-between gap-2 mb-1.5">
                 <div class="flex items-center flex-wrap gap-1.5">
-                  <span class="px-2.5 py-0.5 rounded-lg font-black text-xs ${isClosed ? 'bg-emerald-700 text-white' : 'bg-red-600 text-yellow-200'}">
+                  <span class="px-2 py-0.5 rounded-lg font-black text-xs ${isActive ? 'bg-red-600 text-yellow-200' : 'bg-emerald-800 text-emerald-100'}">
                     ${escapeHtml(c.caseCode || '#---')}
                   </span>
-                  ${maskedBib ? `<span class="px-2 py-0.5 rounded bg-slate-800 text-amber-200 font-mono font-bold text-xs">🏷️ ${escapeHtml(maskedBib)}</span>` : ''}
+                  ${maskedBib ? `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-amber-200 font-mono font-bold text-[11px]">🏷️ ${escapeHtml(maskedBib)}</span>` : ''}
                   ${renderA123BadgeHtml(c.triage)}
                   ${renderFiveLevelBadgeHtml(c.hospitalTriageLevel)}
                 </div>
-                <span class="text-xs font-bold ${isClosed ? 'text-emerald-400' : 'text-red-300'} shrink-0">
-                  ${isClosed ? '✅ 已完成' : '🚨 進行中'}
+                <span class="text-[11px] font-bold ${isActive ? 'text-red-300' : 'text-emerald-400'} shrink-0">
+                  ${isActive ? '🚨 進行中' : '✅ 已完成'}
                 </span>
               </div>
 
-              <div class="text-base font-black text-white mb-1.5 leading-snug">${escapeHtml(c.summary || '跑者傷病案件')}</div>
+              <div class="text-sm font-black text-white mb-1">${escapeHtml(c.summary || '跑者傷病案件')}</div>
 
               ${vsText ? `
-                <div class="text-xs font-mono text-cyan-200 bg-cyan-950/50 border border-cyan-700/50 rounded-lg px-2.5 py-1 mb-2">
+                <div class="text-[11px] font-mono text-cyan-200 bg-cyan-950/45 border border-cyan-700/50 rounded-lg px-2 py-1 mb-1.5 truncate">
                   💓 ${escapeHtml(vsText)}
                 </div>
               ` : ''}
 
               ${c.transportDest ? `
-                <div class="text-xs font-bold text-cyan-300 mb-1.5">🏥 後送醫院／總站：${escapeHtml(c.transportDest)}</div>
-              ` : ''}
-            </div>
-
-            <div class="pt-2 border-t border-slate-800 space-y-1 text-xs">
-              <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-slate-300">
-                <span>執勤：<b>${unitsList.length ? escapeHtml(unitsList.join('、')) : '待派'}</b></span>
-                <span class="font-mono text-slate-400">發生 ${formatTimeStr(c.createdAt)}</span>
-                ${c.arrivedAt ? `<span class="font-mono text-blue-300">到達 ${formatTimeStr(c.arrivedAt)}</span>` : ''}
-                ${c.transportDepartedAt ? `<span class="font-mono text-cyan-300">送醫 ${formatTimeStr(c.transportDepartedAt)}</span>` : ''}
-                ${c.arrivedHospitalAt ? `<span class="font-mono text-indigo-300">到院 ${formatTimeStr(c.arrivedHospitalAt)}</span>` : ''}
-                ${c.closedAt ? `<span class="font-mono text-emerald-300">結案 ${formatTimeStr(c.closedAt)}</span>` : ''}
-              </div>
-              ${latestEvent ? `
-                <div class="text-[11px] text-slate-300 bg-slate-950/70 rounded-lg px-2.5 py-1.5 truncate">
-                  <span class="font-mono text-slate-400">[${formatTimeStr(latestEvent.time)}]</span>
-                  <span class="text-amber-300 font-bold">${escapeHtml(latestEvent.actor)}</span>：${escapeHtml(latestNoteText)}
+                <div class="text-xs text-cyan-300 font-bold mb-1 truncate">
+                  🏥 後送：${escapeHtml(c.transportDest)}
                 </div>
               ` : ''}
+
+              <div class="text-[11px] text-slate-300 mb-1.5 truncate">
+                單位：<b>${unitsList.length ? escapeHtml(unitsList.join('、')) : '待派'}</b>
+              </div>
+
+              <div class="bg-slate-950/75 rounded-xl p-2 space-y-0.5 border border-slate-800">
+                ${miniTimelineHtml || '<div class="text-[11px] text-slate-500">尚無進度紀錄</div>'}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+              <span>發生 ${formatShortTime(c.createdAt)}</span>
+              <span>${c.arrivedHospitalAt ? `到院 ${formatShortTime(c.arrivedHospitalAt)}` : (c.closedAt ? `結案 ${formatShortTime(c.closedAt)}` : '處理中')}</span>
             </div>
           </div>
         `;
@@ -5180,78 +5467,77 @@
     }
 
     // =========================================================================
-    // 23. 緊急警報音效、震動與螢幕恆亮
+    // 23. 螢幕恆亮 (Wake Lock) & 提示音/震動工具
     // =========================================================================
-    function initAudioContext() {
-      try {
-        if (!audioCtx) {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          audioCtx = new AudioContext();
-        }
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-      } catch (e) {}
-    }
-
-    function playUrgentBeep() {
-      initAudioContext();
-      if (!audioCtx) return;
-      try {
-        const now = audioCtx.currentTime;
-        const notes = [880, 1174.66, 880, 1174.66, 1318.51];
-        notes.forEach((freq, idx) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(freq, now + idx * 0.16);
-          gain.gain.setValueAtTime(0.35, now + idx * 0.16);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.16 + 0.14);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start(now + idx * 0.16);
-          osc.stop(now + idx * 0.16 + 0.15);
-        });
-      } catch (e) {}
-    }
-
-    function triggerUrgentAlert() {
-      playUrgentBeep();
-      if ('vibrate' in navigator) {
-        navigator.vibrate([400, 150, 400, 150, 600]);
-      }
-    }
-
-    function testAlertSound() {
-      triggerUrgentAlert();
-      alert('🔔 已播放測試提示音與震動！');
-    }
-
     async function requestWakeLock() {
       if (!('wakeLock' in navigator)) return;
       try {
         wakeLock = await navigator.wakeLock.request('screen');
-        document.getElementById('wakeLockIcon').textContent = '☀️';
-        document.getElementById('wakeLockText').textContent = '恆亮已啟用';
-        wakeLock.addEventListener('release', () => {
-          document.getElementById('wakeLockIcon').textContent = '🌙';
-          document.getElementById('wakeLockText').textContent = '恆亮暫停';
-        });
-      } catch (err) {}
+        updateWakeLockUI(true);
+        wakeLock.addEventListener('release', () => updateWakeLockUI(false));
+      } catch (err) {
+        updateWakeLockUI(false);
+      }
     }
 
     async function toggleWakeLock() {
-      if (wakeLock !== null) {
+      if (wakeLock) {
         await wakeLock.release();
         wakeLock = null;
+        updateWakeLockUI(false);
       } else {
         await requestWakeLock();
       }
     }
 
-    document.addEventListener('visibilitychange', async () => {
-      if (wakeLock !== null && document.visibilityState === 'visible') {
-        await requestWakeLock();
+    function updateWakeLockUI(active) {
+      const icon = document.getElementById('wakeLockIcon');
+      const text = document.getElementById('wakeLockText');
+      if (active) {
+        icon.textContent = '☀️';
+        text.textContent = '恆亮已啟用';
+      } else {
+        icon.textContent = '🌙';
+        text.textContent = '恆亮未啟用';
       }
-    });
+    }
+
+    function initAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    }
+
+    function testAlertSound() {
+      initAudioContext();
+      triggerUrgentAlert();
+    }
+
+    function triggerUrgentAlert() {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([500, 200, 500, 200, 700]);
+      }
+      try {
+        initAudioContext();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        [0, 0.25, 0.5].forEach((offset) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(880, now + offset);
+          osc.frequency.exponentialRampToValueAtTime(1320, now + offset + 0.12);
+          gain.gain.setValueAtTime(0.25, now + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.22);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + offset);
+          osc.stop(now + offset + 0.23);
+        });
+      } catch (e) {}
+    }
 
     function escapeHtml(str) {
       if (!str) return '';
