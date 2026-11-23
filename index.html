@@ -220,7 +220,7 @@
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="block text-sm font-semibold text-slate-300">2. 選擇車輛或救護站：</label>
-              <span class="text-[11px] text-slate-400">救護車重複登入管制</span>
+              <span class="text-[11px] text-slate-400">機巡 / 救護車 / 救護站</span>
             </div>
             <select id="selectVehicleCallsign"
               class="w-full px-3 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white font-bold text-base focus:outline-none focus:border-emerald-500">
@@ -302,7 +302,7 @@
     <div id="map" class="flex-1 h-full w-full z-0"></div>
 
     <!-- 管理員地圖左上角搜尋列 -->
-    <div id="adminMapSearchContainer" class="hidden absolute top-3 left-14 z-[1050] flex flex-col items-start max-w-[calc(100vw-4.5rem)] md:max-w-[340px]">
+    <div id="adminMapSearchContainer" class="hidden absolute top-3 left-3 z-[1050] flex flex-col items-start max-w-[calc(100vw-1.5rem)] md:max-w-[340px]">
       <button type="button" id="btnToggleMapSearch" onclick="toggleAdminMapSearch()" title="搜尋地標、路名或賽道站點"
         class="bg-slate-900/95 hover:bg-slate-800 text-sky-300 border border-sky-500/60 px-3.5 py-2 rounded-full shadow-2xl text-xs font-extrabold flex items-center gap-1.5 transition shrink-0">
         <span>🔍</span>
@@ -323,7 +323,7 @@
             搜尋
           </button>
         </div>
-        <div id="mapMagnifierStatus" class="text-[11px] text-slate-400 mt-1.5">國土測繪中心底圖 · 支援台灣地標與賽道站點</div>
+        <div id="mapMagnifierStatus" class="text-[11px] text-slate-400 mt-1.5">國土測繪中心通用電子地圖 · 支援台灣地標與賽道站點</div>
         <div id="mapMagnifierResults" class="hidden mt-2 max-h-48 overflow-y-auto space-y-1"></div>
       </div>
     </div>
@@ -382,7 +382,7 @@
           <span id="riderLastTime" class="text-xs text-slate-400 font-mono shrink-0 ml-2">--:--:--</span>
         </div>
 
-        <!-- 兩大核心按鈕：出勤 / 到達（到達現場鈕僅記錄時間） -->
+        <!-- 兩大核心按鈕：出勤 / 到達 -->
         <div class="grid grid-cols-2 gap-3">
           <button id="btnActionDispatch" onclick="openReportModal('DISPATCHED')"
             class="py-3 px-3 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-red-950/50 flex flex-col items-center justify-center transition">
@@ -412,7 +412,7 @@
           </button>
         </div>
 
-        <!-- 進行中任務輔助按鈕：回報現場狀況 / 標定事故點 / 結案恢復待命 -->
+        <!-- 進行中任務輔助按鈕 -->
         <div id="riderActiveActionsRow" class="hidden grid grid-cols-3 gap-2 mt-2.5">
           <button type="button" onclick="openReportModal('STATUS_UPDATE')"
             class="py-2.5 px-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.98] text-white font-bold text-xs shadow transition">
@@ -466,8 +466,8 @@
 
       <!-- 頁籤 1：案件編號追蹤與時間軸列表 -->
       <div id="panelCases" class="flex-1 overflow-y-auto p-3 space-y-2.5">
-        <!-- 僅最高權限管理員可見：人員加入門禁、賽事密碼與戰情看板設定（派遣員完全隱藏） -->
-        <div id="adminAccessControlCard" class="hidden p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 space-y-2">
+        <!-- 僅最高權限管理員可見：人員加入門禁、派遣員密碼、賽事密碼與戰情看板設定（皆以 SHA-256 儲存） -->
+        <div id="adminAccessControlCard" class="hidden p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 space-y-2.5">
           <div class="flex items-center justify-between gap-2">
             <div class="text-xs">
               <span class="text-slate-400">人員加入狀態：</span>
@@ -479,26 +479,49 @@
             </button>
           </div>
 
-          <div class="flex items-center justify-between text-xs">
-            <span class="text-slate-400">目前賽事密碼：</span>
-            <span id="adminCurrentPasscodeBadge" class="font-mono font-bold text-slate-400">未設定（免密碼）</span>
+          <!-- 派遣員密碼設定（SHA-256） -->
+          <div class="pt-2 border-t border-slate-700/80 space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-blue-300 font-bold">🛡️ 派遣員登入密碼（SHA-256）：</span>
+              <span id="adminCurrentDispatcherBadge" class="font-mono font-bold text-slate-400">尚未設定</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input type="password" id="adminDispatcherPasscodeInput" placeholder="設定或更新派遣員密碼（SHA-256）"
+                onkeydown="if(event.key==='Enter'){ event.preventDefault(); saveDispatcherPasscode(); }"
+                class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-blue-600/60 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-400" />
+              <button type="button" id="btnSaveDispatcherPasscode" onclick="saveDispatcherPasscode()"
+                class="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shrink-0">
+                💾 設密碼
+              </button>
+              <button type="button" id="btnClearDispatcherPasscode" onclick="clearDispatcherPasscode()" title="清除派遣員密碼"
+                class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
+                清除
+              </button>
+            </div>
           </div>
 
-          <div class="flex items-center gap-1.5">
-            <input type="text" id="adminEventPasscodeInput" placeholder="設定或更新本場賽事密碼（留空＝免密碼）"
-              onkeydown="if(event.key==='Enter'){ event.preventDefault(); saveEventPasscode(); }"
-              class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
-            <button type="button" id="btnSaveEventPasscode" onclick="saveEventPasscode()"
-              class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0">
-              💾 更新密碼
-            </button>
-            <button type="button" id="btnClearEventPasscode" onclick="clearEventPasscode()" title="清除賽事密碼（改為免密碼）"
-              class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
-              清除
-            </button>
+          <!-- 本場賽事密碼設定（SHA-256） -->
+          <div class="pt-2 border-t border-slate-700/80 space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-amber-300 font-bold">🔑 本場賽事密碼（SHA-256）：</span>
+              <span id="adminCurrentPasscodeBadge" class="font-mono font-bold text-slate-400">未設定（免密碼）</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input type="password" id="adminEventPasscodeInput" placeholder="設定或更新賽事密碼（留空＝免密碼）"
+                onkeydown="if(event.key==='Enter'){ event.preventDefault(); saveEventPasscode(); }"
+                class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400" />
+              <button type="button" id="btnSaveEventPasscode" onclick="saveEventPasscode()"
+                class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0">
+                💾 更新密碼
+              </button>
+              <button type="button" id="btnClearEventPasscode" onclick="clearEventPasscode()" title="清除賽事密碼（改為免密碼）"
+                class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold shrink-0">
+                清除
+              </button>
+            </div>
           </div>
 
-          <!-- 最高權限管理員專屬：戰情看板開關、密碼設定與敏感部位遮罩 -->
+          <!-- 最高權限管理員專屬：戰情看板開關、SHA-256 密碼設定與敏感部位遮罩 -->
           <div class="pt-2 border-t border-slate-700/80 space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-cyan-300">📺 戰情看板權限與隱私設定：</span>
@@ -517,12 +540,12 @@
             </div>
 
             <div class="flex items-center justify-between text-xs">
-              <span class="text-slate-400">目前看板密碼：</span>
+              <span class="text-slate-400">看板密碼（SHA-256）：</span>
               <span id="adminCurrentBoardPasscodeBadge" class="font-mono font-bold text-slate-400">未設定（免密碼）</span>
             </div>
 
             <div class="flex items-center gap-1.5">
-              <input type="text" id="adminBoardPasscodeInput" placeholder="設定戰情看板密碼（留空＝免密碼）"
+              <input type="password" id="adminBoardPasscodeInput" placeholder="設定戰情看板密碼（留空＝免密碼）"
                 onkeydown="if(event.key==='Enter'){ event.preventDefault(); saveBoardPasscode(); }"
                 class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-cyan-600/60 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400" />
               <button type="button" id="btnSaveBoardPasscode" onclick="saveBoardPasscode()"
@@ -569,9 +592,8 @@
       </div>
     </aside>
 
-    <!-- ========== C. 大螢幕即時戰情看板（統計指標 + 全部/進行中/已完成 切換 + 即時案件牆） ========== -->
+    <!-- ========== C. 大螢幕即時戰情看板 ========== -->
     <section id="liveBoardView" class="hidden fixed inset-x-0 bottom-0 top-[49px] z-[1200] bg-slate-950 flex flex-col overflow-hidden">
-      <!-- 若最高權限管理員中途停用看板，顯示即時阻擋遮罩 -->
       <div id="boardRevokedOverlay" class="hidden absolute inset-0 z-[1300] bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center">
         <div class="text-5xl mb-3">⛔</div>
         <h2 class="text-xl font-black text-rose-400 mb-2">戰情看板已由總站停用</h2>
@@ -582,7 +604,6 @@
         </button>
       </div>
 
-      <!-- 看板頂部工具列：模式切換 + 遮罩狀態指示 + 地圖開關 + 時鐘 -->
       <div class="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-sm font-black text-cyan-300 tracking-wide">📺 即時救護戰情看板</span>
@@ -616,7 +637,6 @@
         </div>
       </div>
 
-      <!-- 統計數據列 -->
       <div class="p-3 bg-slate-900/70 border-b border-slate-800 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 shrink-0">
         <div class="bg-slate-900 border border-slate-700 rounded-xl p-2.5">
           <div class="text-[11px] font-bold text-slate-400">傷者總數（有效案）</div>
@@ -652,7 +672,6 @@
         </div>
       </div>
 
-      <!-- 五級檢傷分布細項條 -->
       <div class="px-4 py-1.5 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs shrink-0">
         <span class="font-bold text-slate-400">到院五級檢傷分佈：</span>
         <span class="text-rose-300 font-bold">第一級：<strong id="statLvl1" class="font-mono text-sm">0</strong></span>
@@ -662,10 +681,8 @@
         <span class="text-emerald-300 font-bold">第五級：<strong id="statLvl5" class="font-mono text-sm">0</strong></span>
       </div>
 
-      <!-- 看板主體：左側地圖 + 右側案件牆 -->
       <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
         <div id="boardMapSlot" class="w-full lg:w-[42%] h-52 lg:h-full border-b lg:border-b-0 lg:border-r border-slate-800 relative shrink-0"></div>
-
         <div class="flex-1 overflow-y-auto p-3.5">
           <div id="boardCasesGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div class="text-center text-slate-500 text-sm py-12 col-span-full">目前尚無案件資料</div>
@@ -684,14 +701,12 @@
       </div>
       <div id="reportCaseHint" class="text-xs text-amber-300 bg-amber-950/50 border border-amber-800/60 rounded-lg px-2.5 py-1.5 mb-3"></div>
 
-      <!-- 跑者號碼布 -->
       <div class="mb-3">
         <label class="block text-xs font-semibold text-slate-300 mb-1">🏷️ 跑者號碼布（選填）：</label>
         <input type="text" id="reportBibInput" placeholder="例：A1234"
           class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 text-sm font-mono uppercase" />
       </div>
 
-      <!-- 現場 A1 / A2 / A3 直覺分級設計（非「到院」模式顯示） -->
       <div id="fieldA123Section" class="mb-3 p-3 rounded-xl bg-slate-800/80 border border-slate-700">
         <div class="flex items-center justify-between mb-1.5">
           <label class="text-xs font-bold text-amber-300">🩺 現場分級（A1 / A2 / A3，非必填）：</label>
@@ -723,7 +738,6 @@
         </select>
       </div>
 
-      <!-- 救護車「到院」五級檢傷下拉式選單 -->
       <div id="hospitalFiveLevelSection" class="hidden mb-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/60">
         <label class="block text-xs font-bold text-indigo-200 mb-1.5">🏥 到院檢傷分級（五級檢傷，非必填）：</label>
         <select id="reportFiveLevelSelect"
@@ -737,7 +751,6 @@
         </select>
       </div>
 
-      <!-- Vital Sign 區塊 -->
       <div id="reportVitalSignSection" class="mb-3"></div>
 
       <div id="quickTagsContainer" class="flex flex-wrap gap-2 mb-3"></div>
@@ -745,7 +758,6 @@
       <textarea id="reportNoteInput" rows="2" placeholder="補述 / 處置內容（選填）"
         class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm mb-3"></textarea>
 
-      <!-- 救護車「送醫」專用：後送醫院 / 後送總站 + 導航 -->
       <div id="ambulanceTransportGroup" class="hidden mb-4 p-3 rounded-xl bg-cyan-950/35 border border-cyan-700/60">
         <label class="block text-xs font-semibold text-cyan-300 mb-1.5">🏥 後送醫院 / 後送總站（救護車送醫填寫）：</label>
         <div class="flex flex-wrap gap-1.5 mb-2">
@@ -1001,7 +1013,6 @@
         </div>
       </div>
 
-      <!-- 派遣台無線電補述 Vital Sign 欄位 -->
       <div id="radioVitalSignSection" class="mb-3"></div>
 
       <div class="mb-3">
@@ -1244,7 +1255,7 @@
 
   <script>
     // =========================================================================
-    // 1. FIREBASE 設定區 & 雙級管理員密碼雜湊 (SHA-256)
+    // 1. FIREBASE 設定區 & 密碼 SHA-256 雜湊驗證（派遣員密碼由管理員介面設定）
     // =========================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDqPdLDZfujmoSAadLJyp4fOGi9UEHge4U",
@@ -1259,10 +1270,14 @@
     const DB_ROOT = 'marathon_ems_tracker';
     const OFFLINE_QUEUE_KEY = 'ems_offline_queue_v1';
     const BOARD_AUTH_SESSION_KEY = 'ems_board_auth_pass_v1';
-    // 派遣密碼: 8868
-    const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
-    // 最高權限管理員密碼: 886885
+
+    // 最高權限管理員密碼 SHA-256 雜湊
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
+
+    // 動態由管理員介面設定並以 SHA-256 存入 systemSettings 的雜湊值
+    let dispatcherPasscodeHash = '';
+    let eventPasscodeHash = '';
+    let boardPasscodeHash = '';
 
     async function sha256Hex(plainText) {
       const encoder = new TextEncoder();
@@ -1277,7 +1292,7 @@
       if (!cleanPin) return null;
       const inputHash = await sha256Hex(cleanPin);
       if (inputHash === SUPER_ADMIN_PASSWORD_SHA256) return 'SUPER_ADMIN';
-      if (inputHash === DISPATCH_PASSWORD_SHA256) return 'DISPATCHER';
+      if (dispatcherPasscodeHash && inputHash === dispatcherPasscodeHash) return 'DISPATCHER';
       return null;
     }
 
@@ -1291,7 +1306,7 @@
       ...Array.from({ length: 5 }, (_, i) => ({
         callsign: `救護車${91 + i}`,
         type: 'AMBULANCE',
-        label: `🚑 救護車${91 + i}（限單一登入）`
+        label: `🚑 救護車${91 + i}`
       })),
       ...Array.from({ length: 4 }, (_, i) => ({
         callsign: `第${i + 2}救護站`,
@@ -1316,14 +1331,12 @@
       AT_HOSPITAL:  { label: '🏥 已抵達醫院', short: '到院', color: '#4f46e5', cssClass: 'status-hospital' }
     };
 
-    // 現場 A1 / A2 / A3 設定
     const A123_CONFIG = {
       A1: { label: 'A1 (OHCA)', short: 'A1', bgClass: 'bg-red-600 text-white border-red-300' },
       A2: { label: 'A2 (Coma)', short: 'A2', bgClass: 'bg-amber-400 text-slate-950 border-amber-200' },
       A3: { label: 'A3 (意識清楚)', short: 'A3', bgClass: 'bg-emerald-600 text-white border-emerald-300' }
     };
 
-    // 到院五級檢傷設定
     const FIVE_LEVEL_CONFIG = {
       '第一級': { bgClass: 'bg-rose-600 text-white border-rose-300' },
       '第二級': { bgClass: 'bg-orange-500 text-white border-orange-200' },
@@ -1332,7 +1345,6 @@
       '第五級': { bgClass: 'bg-emerald-600 text-white border-emerald-300' }
     };
 
-    // 賽道站點類型設定
     const POI_TYPES = {
       MEDICAL:    { icon: '🏥', label: '救護站/醫療站/總站', color: '#dc2626' },
       AED:        { icon: '⚡', label: 'AED設置點', color: '#d97706' },
@@ -1341,7 +1353,6 @@
       TRAFFIC:    { icon: '🚧', label: '交管/收容點', color: '#475569' }
     };
 
-    // 快捷回報標籤
     const QUICK_TAGS = {
       DISPATCHED: [
         '🏃‍♂️ 發現跑者倒地',
@@ -1407,13 +1418,8 @@
     let boardShowMap = true;
     let boardClockTimer = null;
 
-    // 賽事門禁與密碼狀態（含戰情看板開關、密碼與敏感遮罩）
     let eventEnrollmentOpen = true;
-    let eventPasscodeHash = '';
-    let eventPasscodePlain = '';
     let boardEnabled = true;
-    let boardPasscodeHash = '';
-    let boardPasscodePlain = '';
     let boardMaskSensitive = false;
     let lastKnownResetAt = 0;
     let hasExportedCsvThisSession = false;
@@ -1532,9 +1538,18 @@
     }
 
     // =========================================================================
-    // 3. Vital Sign 動態表單 & 解析格式化輔助函式
+    // 3. Vital Sign 動態表單（輕 / 聲 / 痛 / 否 點選按鈕） & 解析格式化輔助函式
     // =========================================================================
+    const CONSCIOUS_OPTIONS = ['輕', '聲', '痛', '否'];
+
     function buildVitalSignFormHtml(prefix) {
+      const buttonsHtml = CONSCIOUS_OPTIONS.map(opt => `
+        <button type="button" id="${prefix}_vs_con_${opt}" onclick="selectConsciousOption('${prefix}', '${opt}')"
+          class="py-1.5 px-1 rounded-lg border border-slate-600 bg-slate-900 hover:border-cyan-400 text-slate-200 font-black text-xs transition">
+          ${opt}
+        </button>
+      `).join('');
+
       return `
         <div class="p-3 rounded-xl bg-slate-800/90 border border-slate-700 space-y-2.5">
           <div class="flex items-center justify-between">
@@ -1542,17 +1557,18 @@
             <span class="text-[10px] text-slate-400">可依現場量測項目選填</span>
           </div>
 
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="block text-[11px] font-semibold text-slate-300 mb-1">意識 (AVPU)</label>
-              <select id="${prefix}_vs_avpu" class="w-full px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs font-bold">
-                <option value="">未填</option>
-                <option value="A (清醒)">A 清醒</option>
-                <option value="V (對聲音有反應)">V 呼喚反應</option>
-                <option value="P (對痛有反應)">P 痛覺反應</option>
-                <option value="U (無反應)">U 無反應</option>
-              </select>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-semibold text-slate-300">意識（輕 / 聲 / 痛 / 否）</label>
+              <span id="${prefix}_vs_con_label" class="text-[10px] font-bold text-slate-400">未選</span>
             </div>
+            <input type="hidden" id="${prefix}_vs_con" value="" />
+            <div class="grid grid-cols-4 gap-1.5">
+              ${buttonsHtml}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="block text-[11px] font-semibold text-slate-300 mb-1">血壓 SBP/DBP</label>
               <div class="flex items-center gap-1">
@@ -1596,8 +1612,34 @@
       `;
     }
 
+    function selectConsciousOption(prefix, optionVal) {
+      const hiddenEl = document.getElementById(`${prefix}_vs_con`);
+      const labelEl = document.getElementById(`${prefix}_vs_con_label`);
+      if (!hiddenEl) return;
+
+      const nextVal = hiddenEl.value === optionVal ? '' : optionVal;
+      hiddenEl.value = nextVal;
+
+      if (labelEl) {
+        labelEl.textContent = nextVal ? `已選：${nextVal}` : '未選';
+        labelEl.className = nextVal
+          ? 'text-[10px] font-bold text-cyan-300'
+          : 'text-[10px] font-bold text-slate-400';
+      }
+
+      CONSCIOUS_OPTIONS.forEach(opt => {
+        const btn = document.getElementById(`${prefix}_vs_con_${opt}`);
+        if (!btn) return;
+        if (opt === nextVal) {
+          btn.className = 'py-1.5 px-1 rounded-lg border-2 border-cyan-300 bg-cyan-600 text-white font-black text-xs shadow transition';
+        } else {
+          btn.className = 'py-1.5 px-1 rounded-lg border border-slate-600 bg-slate-900 hover:border-cyan-400 text-slate-200 font-black text-xs transition';
+        }
+      });
+    }
+
     function readVitalSignForm(prefix) {
-      const avpu = (document.getElementById(`${prefix}_vs_avpu`)?.value || '').trim();
+      const conscious = (document.getElementById(`${prefix}_vs_con`)?.value || '').trim();
       const sbp = (document.getElementById(`${prefix}_vs_sbp`)?.value || '').trim();
       const dbp = (document.getElementById(`${prefix}_vs_dbp`)?.value || '').trim();
       const hr = (document.getElementById(`${prefix}_vs_hr`)?.value || '').trim();
@@ -1607,7 +1649,7 @@
       const bg = (document.getElementById(`${prefix}_vs_bg`)?.value || '').trim();
 
       const vs = {};
-      if (avpu) vs.avpu = avpu;
+      if (conscious) vs.conscious = conscious;
       if (sbp || dbp) vs.bp = `${sbp || '?'} / ${dbp || '?'}`;
       if (hr) vs.hr = hr;
       if (spo2) vs.spo2 = spo2;
@@ -1618,7 +1660,21 @@
     }
 
     function resetVitalSignForm(prefix) {
-      ['avpu', 'sbp', 'dbp', 'hr', 'spo2', 'rr', 'temp', 'bg'].forEach(field => {
+      const hiddenEl = document.getElementById(`${prefix}_vs_con`);
+      if (hiddenEl) hiddenEl.value = '';
+      const labelEl = document.getElementById(`${prefix}_vs_con_label`);
+      if (labelEl) {
+        labelEl.textContent = '未選';
+        labelEl.className = 'text-[10px] font-bold text-slate-400';
+      }
+      CONSCIOUS_OPTIONS.forEach(opt => {
+        const btn = document.getElementById(`${prefix}_vs_con_${opt}`);
+        if (btn) {
+          btn.className = 'py-1.5 px-1 rounded-lg border border-slate-600 bg-slate-900 hover:border-cyan-400 text-slate-200 font-black text-xs transition';
+        }
+      });
+
+      ['sbp', 'dbp', 'hr', 'spo2', 'rr', 'temp', 'bg'].forEach(field => {
         const el = document.getElementById(`${prefix}_vs_${field}`);
         if (el) el.value = '';
       });
@@ -1627,7 +1683,8 @@
     function formatVitalSignSummary(vs) {
       if (!vs || typeof vs !== 'object') return '';
       const parts = [];
-      if (vs.avpu) parts.push(`意識:${vs.avpu.split(' ')[0]}`);
+      const conVal = vs.conscious || (vs.avpu ? vs.avpu.split(' ')[0] : '');
+      if (conVal) parts.push(`意識:${conVal}`);
       if (vs.bp) parts.push(`BP:${vs.bp}`);
       if (vs.hr) parts.push(`HR:${vs.hr}`);
       if (vs.spo2) parts.push(`SpO2:${vs.spo2}%`);
@@ -1637,7 +1694,6 @@
       return parts.join(' | ');
     }
 
-    // 敏感資訊遮罩輔助函式
     function maskBibNumber(bib) {
       const clean = String(bib || '').trim();
       if (!clean) return '';
@@ -1700,9 +1756,7 @@
       await new Promise(r => setTimeout(r, 450));
       selectRole('board');
 
-      if (!boardEnabled) {
-        return;
-      }
+      if (!boardEnabled) return;
 
       const urlKey = (params.get('key') || '').trim();
       const savedPass = (sessionStorage.getItem(BOARD_AUTH_SESSION_KEY) || '').trim();
@@ -1823,11 +1877,7 @@
 
       const revokedOverlay = document.getElementById('boardRevokedOverlay');
       if (revokedOverlay) {
-        if (selectedRole === 'board' && !boardEnabled) {
-          revokedOverlay.classList.remove('hidden');
-        } else {
-          revokedOverlay.classList.add('hidden');
-        }
+        revokedOverlay.classList.toggle('hidden', !(selectedRole === 'board' && !boardEnabled));
       }
       const maskPill = document.getElementById('boardMaskActivePill');
       if (maskPill) {
@@ -1860,7 +1910,6 @@
         return;
       }
 
-      // ===== 戰情看板身分驗證 =====
       if (selectedRole === 'board') {
         if (!boardEnabled) {
           alert('⛔ 戰情看板目前由最高權限管理員設定為「停用／未開放」，請聯繫總站開啟。');
@@ -1900,19 +1949,18 @@
         return;
       }
 
-      // ===== 管理員身分驗證 =====
       if (selectedRole === 'dispatch') {
         const pinInput = document.getElementById('inputAdminPin').value.trim();
         const verifiedLevel = await verifyAdminLevel(pinInput);
         if (!verifiedLevel) {
-          alert('❌ 管理員密碼錯誤！請確認後重新輸入。');
+          const hint = !dispatcherPasscodeHash ? '（若尚未設定派遣員密碼，請由最高權限管理員登入設定或輸入最高權限密碼）' : '';
+          alert(`❌ 管理員密碼錯誤！${hint}`);
           document.getElementById('inputAdminPin').value = '';
           document.getElementById('inputAdminPin').focus();
           return;
         }
         adminLevel = verifiedLevel;
       } else {
-        // ===== 一般用戶門禁與賽事密碼驗證 =====
         adminLevel = null;
         if (!eventEnrollmentOpen) {
           alert('⛔ 總站目前已「停止開放加入」，請聯繫救護總站確認。');
@@ -2011,18 +2059,11 @@
 
     function applyAdminPermissionUI() {
       const isSuper = adminLevel === 'SUPER_ADMIN';
-
-      // 結算清空按鈕：僅最高權限管理員可見
       const btnEndEvent = document.getElementById('btnOpenEndEvent');
-      if (btnEndEvent) {
-        btnEndEvent.classList.toggle('hidden', !isSuper);
-      }
+      if (btnEndEvent) btnEndEvent.classList.toggle('hidden', !isSuper);
 
-      // 人員門禁、賽事密碼與戰情看板控制卡片：僅最高權限管理員可見，派遣員完全隱藏
       const accessCard = document.getElementById('adminAccessControlCard');
-      if (accessCard) {
-        accessCard.classList.toggle('hidden', !isSuper);
-      }
+      if (accessCard) accessCard.classList.toggle('hidden', !isSuper);
     }
 
     async function reopenSetup() {
@@ -2046,7 +2087,7 @@
     }
 
     // =========================================================================
-    // 5. 賽事門禁開關、賽事密碼、戰情看板開關/密碼/遮罩 & 全員強制登出監聽
+    // 5. 系統設定監聽（所有管理員設定密碼皆以 SHA-256 儲存，不存明碼）
     // =========================================================================
     function setupSystemSettingsListener() {
       const settingsRef = db.ref(`${DB_ROOT}/systemSettings`);
@@ -2058,11 +2099,10 @@
       settingsRef.on('value', (snapshot) => {
         const cfg = snapshot.val() || {};
         eventEnrollmentOpen = cfg.enrollmentOpen !== false;
+        dispatcherPasscodeHash = cfg.dispatcherPasscodeHash || '';
         eventPasscodeHash = cfg.eventPasscodeHash || '';
-        eventPasscodePlain = cfg.eventPasscodePlain || '';
         boardEnabled = cfg.boardEnabled !== false;
         boardPasscodeHash = cfg.boardPasscodeHash || '';
-        boardPasscodePlain = cfg.boardPasscodePlain || '';
         boardMaskSensitive = cfg.boardMaskSensitive === true;
 
         const closedBanner = document.getElementById('enrollmentClosedBanner');
@@ -2072,6 +2112,7 @@
 
         const adminStatusBadge = document.getElementById('adminEnrollmentStatusBadge');
         const btnToggle = document.getElementById('btnToggleEnrollment');
+        const adminDispBadge = document.getElementById('adminCurrentDispatcherBadge');
         const adminPassBadge = document.getElementById('adminCurrentPasscodeBadge');
 
         if (adminStatusBadge && btnToggle) {
@@ -2088,9 +2129,19 @@
           }
         }
 
+        if (adminDispBadge) {
+          if (dispatcherPasscodeHash) {
+            adminDispBadge.textContent = `🔒 SHA-256 (${dispatcherPasscodeHash.slice(0, 8)}...)`;
+            adminDispBadge.className = 'font-mono font-bold text-blue-300';
+          } else {
+            adminDispBadge.textContent = '尚未設定';
+            adminDispBadge.className = 'font-mono font-bold text-slate-400';
+          }
+        }
+
         if (adminPassBadge) {
           if (eventPasscodeHash) {
-            adminPassBadge.textContent = eventPasscodePlain ? `🔒 ${eventPasscodePlain}` : '🔒 已設定密碼';
+            adminPassBadge.textContent = `🔒 SHA-256 (${eventPasscodeHash.slice(0, 8)}...)`;
             adminPassBadge.className = 'font-mono font-bold text-amber-300';
           } else {
             adminPassBadge.textContent = '未設定（免密碼）';
@@ -2129,7 +2180,7 @@
 
         if (adminBoardPassBadge) {
           if (boardPasscodeHash) {
-            adminBoardPassBadge.textContent = boardPasscodePlain ? `🔒 ${boardPasscodePlain}` : '🔒 已設定密碼';
+            adminBoardPassBadge.textContent = `🔒 SHA-256 (${boardPasscodeHash.slice(0, 8)}...)`;
             adminBoardPassBadge.className = 'font-mono font-bold text-cyan-300';
           } else {
             adminBoardPassBadge.textContent = '未設定（免密碼）';
@@ -2174,6 +2225,43 @@
       });
     }
 
+    async function saveDispatcherPasscode() {
+      if (adminLevel !== 'SUPER_ADMIN') {
+        alert('⛔ 權限不足：僅「最高權限管理員」可設定派遣員密碼。');
+        return;
+      }
+      const inputEl = document.getElementById('adminDispatcherPasscodeInput');
+      const raw = (inputEl?.value || '').trim();
+      if (!raw) {
+        alert('⚠️ 請先輸入要設定的派遣員密碼！');
+        inputEl?.focus();
+        return;
+      }
+      const hash = await sha256Hex(raw);
+      await db.ref(`${DB_ROOT}/systemSettings`).update({
+        dispatcherPasscodeHash: hash,
+        dispatcherPasscodePlain: firebase.database.ServerValue.delete(),
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      inputEl.value = '';
+      alert('✅ 已更新派遣員密碼（已以 SHA-256 雜湊加密儲存）。');
+    }
+
+    async function clearDispatcherPasscode() {
+      if (adminLevel !== 'SUPER_ADMIN') {
+        alert('⛔ 權限不足：僅「最高權限管理員」可清除派遣員密碼。');
+        return;
+      }
+      await db.ref(`${DB_ROOT}/systemSettings`).update({
+        dispatcherPasscodeHash: '',
+        dispatcherPasscodePlain: firebase.database.ServerValue.delete(),
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      const inputEl = document.getElementById('adminDispatcherPasscodeInput');
+      if (inputEl) inputEl.value = '';
+      alert('✅ 已清除派遣員密碼。');
+    }
+
     async function saveEventPasscode() {
       if (adminLevel !== 'SUPER_ADMIN') {
         alert('⛔ 權限不足：僅「最高權限管理員」可設定或更改本場賽事密碼。');
@@ -2188,11 +2276,11 @@
       const hash = await sha256Hex(raw);
       await db.ref(`${DB_ROOT}/systemSettings`).update({
         eventPasscodeHash: hash,
-        eventPasscodePlain: raw,
+        eventPasscodePlain: firebase.database.ServerValue.delete(),
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       });
       inputEl.value = '';
-      alert(`✅ 已設定本場賽事密碼為：「${raw}」\n新加入的一般用戶需輸入此密碼才能進入。`);
+      alert('✅ 已設定本場賽事密碼（已以 SHA-256 雜湊儲存）。');
     }
 
     async function clearEventPasscode() {
@@ -2202,7 +2290,7 @@
       }
       await db.ref(`${DB_ROOT}/systemSettings`).update({
         eventPasscodeHash: '',
-        eventPasscodePlain: '',
+        eventPasscodePlain: firebase.database.ServerValue.delete(),
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       });
       const inputEl = document.getElementById('adminEventPasscodeInput');
@@ -2248,11 +2336,11 @@
       const hash = await sha256Hex(raw);
       await db.ref(`${DB_ROOT}/systemSettings`).update({
         boardPasscodeHash: hash,
-        boardPasscodePlain: raw,
+        boardPasscodePlain: firebase.database.ServerValue.delete(),
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       });
       inputEl.value = '';
-      alert(`✅ 已設定戰情看板密碼為：「${raw}」\n開啟戰情看板需輸入此密碼（或使用 ?board=1&key=${raw}）。`);
+      alert('✅ 已設定戰情看板密碼（已以 SHA-256 雜湊儲存）。');
     }
 
     async function clearBoardPasscode() {
@@ -2262,7 +2350,7 @@
       }
       await db.ref(`${DB_ROOT}/systemSettings`).update({
         boardPasscodeHash: '',
-        boardPasscodePlain: '',
+        boardPasscodePlain: firebase.database.ServerValue.delete(),
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       });
       const inputEl = document.getElementById('adminBoardPasscodeInput');
@@ -2484,7 +2572,7 @@
     }
 
     // =========================================================================
-    // 7. 台灣國土測繪中心 (NLSC) 地圖與圖層初始化
+    // 7. 台灣國土測繪中心 (NLSC) 通用電子地圖與點擊派案
     // =========================================================================
     function initMap() {
       if (map) {
@@ -2494,37 +2582,17 @@
 
       map = L.map('map', { zoomControl: true }).setView([23.6978, 120.9605], 8);
 
-      const nlscEmapLayer = L.tileLayer(
+      L.tileLayer(
         'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
         {
-          attribution: '&copy; 內政部國土測繪中心 (NLSC)',
+          attribution: '&copy; 內政部國土測繪中心 (NLSC) 通用電子地圖',
           maxZoom: 19,
           crossOrigin: true
         }
-      );
-
-      const nlscPhotoLayer = L.tileLayer(
-        'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
-        {
-          attribution: '&copy; 內政部國土測繪中心 正射影像',
-          maxZoom: 19,
-          crossOrigin: true
-        }
-      );
-
-      nlscEmapLayer.addTo(map);
-
-      L.control.layers(
-        {
-          '🇹🇼 台灣通用電子地圖 (國土測繪中心)': nlscEmapLayer,
-          '🛰️ 台灣正射航照影像 (國土測繪中心)': nlscPhotoLayer
-        },
-        {},
-        { position: 'topright' }
       ).addTo(map);
 
       map.on('click', (e) => {
-        if (selectedRole !== 'dispatch' || !mapPickMode) return;
+        if (selectedRole !== 'dispatch') return;
         const lat = Number(e.latlng.lat.toFixed(6));
         const lng = Number(e.latlng.lng.toFixed(6));
 
@@ -2540,6 +2608,8 @@
           document.getElementById('inputPoiName').value = '';
           document.getElementById('inputPoiNote').value = '';
           document.getElementById('poiModal').classList.remove('hidden');
+        } else if (!mapPickMode) {
+          openAdminDispatchModal('', { lat, lng }, '', false, '');
         }
       });
 
@@ -2843,7 +2913,7 @@
     }
 
     // =========================================================================
-    // 10. 案件管理核心邏輯（案號產生、建立案件、同案派遣、合併案號、重啟案件、時間軸寫入）
+    // 10. 案件管理核心邏輯
     // =========================================================================
     async function generateNextCaseCode() {
       const counterRef = db.ref(`${DB_ROOT}/meta/caseCounter`);
@@ -3461,7 +3531,7 @@
     }
 
     // =========================================================================
-    // 12. 一般用戶監聽總站派遣通知（含已處理指紋去重）
+    // 12. 一般用戶監聽總站派遣通知
     // =========================================================================
     function listenIncomingDispatch() {
       const dispatchRef = db.ref(`${DB_ROOT}/dispatches/${myVehicleCallsign}`);
@@ -3792,7 +3862,6 @@
       alert(`✅ 已立案【${caseCode}】並發送派遣指令給「${targetCallsign}」！`);
     }
 
-    // ==================== 管理員：重啟誤結案案件並讓被派遣同仁恢復填寫 ====================
     async function reopenClosedCase(caseId) {
       const c = allCasesData[caseId];
       if (!c) return;
@@ -3837,7 +3906,6 @@
       alert(`✅ 已重啟案件 ${c.caseCode}！${restoredCount > 0 ? `已同步恢復 ${restoredCount} 個線上單位的案件填寫權限。` : '目前無對應線上單位，可點選「同案派遣」指派人員。'}`);
     }
 
-    // ==================== 管理員：無線電回報補述 / 代點救護車送醫到院 ====================
     function openRadioNoteModal(caseId, presetAction = 'NOTE') {
       const c = allCasesData[caseId];
       if (!c) return;
@@ -4010,7 +4078,6 @@
       closeRadioNoteModal();
     }
 
-    // ==================== 管理員：案號合併功能 ====================
     function openMergeCaseModal(caseId) {
       const c = allCasesData[caseId];
       if (!c) return;
@@ -4423,34 +4490,31 @@
         const cfg = STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY;
         const isAmb = u.unitType === 'AMBULANCE';
         const isStation = u.unitType === 'STATION';
-        const iconEmoji = isAmb ? '🚑' : (isStation ? '⛺' : '🏍️');
-        const labelText = u.personName ? `${u.callsign}(${u.personName})` : u.callsign;
-        const caseTag = u.activeCaseId && allCasesData[u.activeCaseId] ? ` ${allCasesData[u.activeCaseId].caseCode}` : '';
+        const iconSymbol = isAmb ? '🚑' : (isStation ? '⛺' : '🏍️');
+        const badgeTitle = u.personName ? `${u.callsign} (${u.personName})` : u.callsign;
 
-        const iconHtml = `
+        const html = `
           <div class="ems-marker-wrapper">
-            <div class="ems-marker-badge" style="background-color: ${cfg.color};">
-              ${escapeHtml(labelText)}${escapeHtml(caseTag)}
-            </div>
-            <div class="ems-marker-dot ${isAmb ? 'ems-marker-ambulance' : ''}" style="background-color: ${cfg.color};">
-              ${iconEmoji}
-            </div>
+            <div class="ems-marker-badge" style="background-color: ${cfg.color};">${escapeHtml(badgeTitle)}</div>
+            <div class="ems-marker-dot ${isAmb ? 'ems-marker-ambulance' : ''}" style="background-color: ${cfg.color};">${iconSymbol}</div>
           </div>
         `;
 
         const customIcon = L.divIcon({
-          html: iconHtml,
+          html,
           className: '',
           iconSize: [0, 0],
           iconAnchor: [0, 0]
         });
 
+        const activeCaseObj = u.activeCaseId ? allCasesData[u.activeCaseId] : null;
+        const caseBadgeHtml = activeCaseObj ? `<br/><span style="color:#dc2626;font-weight:bold;">案件 ${escapeHtml(activeCaseObj.caseCode)}</span>` : '';
         const popupHtml = `
-          <div style="color:#0f172a; min-width:170px;">
-            <div style="font-weight:900; font-size:14px;">${iconEmoji} ${escapeHtml(labelText)}</div>
-            <div style="font-size:12px; font-weight:bold; color:${cfg.color}; margin:3px 0;">${cfg.label}</div>
-            ${u.note ? `<div style="font-size:12px; color:#334155;">備註：${escapeHtml(u.note)}</div>` : ''}
-            <div style="font-size:11px; color:#64748b; margin-top:4px;">更新：${formatTime(u.lastSeen)}</div>
+          <div style="color:#0f172a; min-width:165px; font-size:13px;">
+            <div style="font-weight:900; font-size:15px;">${iconSymbol} ${escapeHtml(badgeTitle)}</div>
+            <div style="margin:3px 0; font-weight:bold; color:${cfg.color};">${cfg.label}${caseBadgeHtml}</div>
+            <div style="color:#334155;">${escapeHtml(u.note || '無備註')}</div>
+            <div style="color:#64748b; font-size:11px; margin-top:4px;">更新：${formatTime(u.updatedAt || u.lastSeen)}</div>
           </div>
         `;
 
@@ -4459,197 +4523,168 @@
           markersMap[unitId].setIcon(customIcon);
           markersMap[unitId].setPopupContent(popupHtml);
         } else {
-          markersMap[unitId] = L.marker([u.lat, u.lng], { icon: customIcon })
-            .addTo(map)
-            .bindPopup(popupHtml);
+          const marker = L.marker([u.lat, u.lng], { icon: customIcon }).addTo(map);
+          marker.bindPopup(popupHtml);
+          markersMap[unitId] = marker;
         }
       });
 
-      Object.keys(markersMap).forEach(id => {
-        if (!activeIds.has(id)) {
-          map.removeLayer(markersMap[id]);
-          delete markersMap[id];
+      Object.keys(markersMap).forEach(unitId => {
+        if (!activeIds.has(unitId)) {
+          map.removeLayer(markersMap[unitId]);
+          delete markersMap[unitId];
         }
       });
     }
 
     function renderCasePinsOnMap() {
       if (!map) return;
-      const activeIds = new Set();
+      const activePinIds = new Set();
 
       Object.entries(allCasesData).forEach(([caseId, c]) => {
         if (c.status === 'CLOSED' || !c.lat || !c.lng) return;
-        activeIds.add(caseId);
+        activePinIds.add(caseId);
 
-        const triageTag = c.triageLevel ? ` [${c.triageLevel}]` : '';
-        const pinHtml = `
+        const bibTag = c.bibNumber ? ` [${c.bibNumber}]` : '';
+        const triageTag = c.triageLevel ? ` (${c.triageLevel})` : '';
+        const html = `
           <div class="case-pin-wrapper">
-            <div class="case-pin-badge">案件 ${escapeHtml(c.caseCode || '')}${escapeHtml(triageTag)}</div>
+            <div class="case-pin-badge">${escapeHtml(c.caseCode || '#案件')}${escapeHtml(bibTag)}${escapeHtml(triageTag)}</div>
             <div class="case-pin-icon">📍</div>
           </div>
         `;
-        const pinIcon = L.divIcon({
-          html: pinHtml,
-          className: '',
-          iconSize: [0, 0],
-          iconAnchor: [0, 0]
-        });
-
-        const assignedNames = Object.keys(c.assignedUnits || {}).join('、') || '尚未指派';
-        const bibLine = c.bibNumber ? `<div style="font-size:12px; font-weight:bold; color:#b45309;">🏷️ 號碼布：${escapeHtml(c.bibNumber)}</div>` : '';
-        const vsLine = c.latestVitalSign ? `<div style="font-size:11px; color:#0e7490; font-family:monospace;">💓 ${escapeHtml(formatVitalSignSummary(c.latestVitalSign))}</div>` : '';
-
+        const icon = L.divIcon({ html, className: '', iconSize: [0, 0], iconAnchor: [0, 0] });
+        const unitsStr = Object.keys(c.assignedUnits || {}).join('、') || '尚未指派';
         const popupHtml = `
-          <div style="color:#0f172a; min-width:190px;">
-            <div style="font-weight:900; font-size:14px; color:#b91c1c;">🚨 案件 ${escapeHtml(c.caseCode || '')}</div>
-            ${bibLine}
-            <div style="font-size:12px; font-weight:bold; margin:3px 0;">${escapeHtml(c.summary || '')}</div>
-            ${vsLine}
-            <div style="font-size:11px; color:#334155;">出勤單位：${escapeHtml(assignedNames)}</div>
-            <div style="font-size:11px; color:#64748b; margin-top:2px;">立案：${formatTime(c.createdAt)}</div>
-            <a href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}&travelmode=driving" target="_blank"
-              style="display:inline-block; margin-top:6px; padding:4px 8px; background:#2563eb; color:#fff; border-radius:6px; text-decoration:none; font-size:11px; font-weight:bold;">
-              🧭 開啟 Google 導航
-            </a>
+          <div style="color:#0f172a; min-width:190px; font-size:13px;">
+            <div style="font-weight:900; color:#b91c1c;">🚨 案件 ${escapeHtml(c.caseCode || '')}</div>
+            <div style="font-weight:bold; margin:4px 0;">${escapeHtml(c.summary || '')}</div>
+            <div style="font-size:12px; color:#334155;">出勤/支援：${escapeHtml(unitsStr)}</div>
+            <div style="margin-top:6px;">
+              <a href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}&travelmode=driving" target="_blank"
+                style="display:inline-block; background:#2563eb; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px;">
+                🧭 Google 導航至此
+              </a>
+            </div>
           </div>
         `;
 
         if (caseMarkersMap[caseId]) {
           caseMarkersMap[caseId].setLatLng([c.lat, c.lng]);
-          caseMarkersMap[caseId].setIcon(pinIcon);
+          caseMarkersMap[caseId].setIcon(icon);
           caseMarkersMap[caseId].setPopupContent(popupHtml);
         } else {
-          caseMarkersMap[caseId] = L.marker([c.lat, c.lng], { icon: pinIcon })
-            .addTo(map)
-            .bindPopup(popupHtml);
+          const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 500 }).addTo(map);
+          m.bindPopup(popupHtml);
+          caseMarkersMap[caseId] = m;
         }
       });
 
-      Object.keys(caseMarkersMap).forEach(id => {
-        if (!activeIds.has(id)) {
-          map.removeLayer(caseMarkersMap[id]);
-          delete caseMarkersMap[id];
+      Object.keys(caseMarkersMap).forEach(caseId => {
+        if (!activePinIds.has(caseId)) {
+          map.removeLayer(caseMarkersMap[caseId]);
+          delete caseMarkersMap[caseId];
         }
       });
     }
 
     function renderPoiMarkersOnMap() {
       if (!map) return;
-
-      Object.keys(poiMarkersMap).forEach(id => {
-        map.removeLayer(poiMarkersMap[id]);
-        delete poiMarkersMap[id];
-      });
+      Object.values(poiMarkersMap).forEach(m => map.removeLayer(m));
+      poiMarkersMap = {};
 
       if (!showPois) return;
 
-      Object.entries(allPoisData).forEach(([poiId, p]) => {
-        if (!p.lat || !p.lng) return;
-        const cfg = POI_TYPES[p.type] || POI_TYPES.MEDICAL;
+      Object.entries(allPoisData).forEach(([poiId, poi]) => {
+        if (!poi.lat || !poi.lng) return;
+        const cfg = POI_TYPES[poi.type] || POI_TYPES.MEDICAL;
         const html = `
           <div class="poi-pin-wrapper">
-            <div class="poi-pin-badge" style="background-color: ${cfg.color};">${escapeHtml(p.name)}</div>
-            <div class="poi-pin-circle" style="background-color: ${cfg.color};">${cfg.icon}</div>
+            <div class="poi-pin-badge" style="background-color:${cfg.color};">${cfg.icon} ${escapeHtml(poi.name)}</div>
+            <div class="poi-pin-circle" style="background-color:${cfg.color};">${cfg.icon}</div>
           </div>
         `;
-        const icon = L.divIcon({
-          html,
-          className: '',
-          iconSize: [0, 0],
-          iconAnchor: [0, 0]
-        });
-
-        const popup = `
-          <div style="color:#0f172a; min-width:150px;">
-            <div style="font-weight:900; font-size:13px;">${cfg.icon} ${escapeHtml(p.name)}</div>
-            <div style="font-size:11px; color:#475569;">${cfg.label}</div>
-            ${p.note ? `<div style="font-size:12px; margin-top:3px;">${escapeHtml(p.note)}</div>` : ''}
-            <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=driving" target="_blank"
-              style="display:inline-block; margin-top:6px; padding:3px 7px; background:#0d9488; color:#fff; border-radius:6px; text-decoration:none; font-size:11px; font-weight:bold;">
-              🧭 導航至此站點
-            </a>
+        const icon = L.divIcon({ html, className: '', iconSize: [0, 0], iconAnchor: [0, 0] });
+        const popupHtml = `
+          <div style="color:#0f172a; min-width:150px; font-size:12px;">
+            <div style="font-weight:900; font-size:14px;">${cfg.icon} ${escapeHtml(poi.name)}</div>
+            <div style="color:#475569; font-weight:bold;">${cfg.label}</div>
+            ${poi.note ? `<div style="margin-top:3px; color:#1e293b;">${escapeHtml(poi.note)}</div>` : ''}
           </div>
         `;
-
-        poiMarkersMap[poiId] = L.marker([p.lat, p.lng], { icon })
-          .addTo(map)
-          .bindPopup(popup);
+        const m = L.marker([poi.lat, poi.lng], { icon, zIndexOffset: 200 }).addTo(map);
+        m.bindPopup(popupHtml);
+        poiMarkersMap[poiId] = m;
       });
     }
 
     function renderCasesPanel() {
       const container = document.getElementById('casesListContainer');
-      const allCases = Object.values(allCasesData).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      const activeCases = allCases.filter(c => c.status !== 'CLOSED');
-      document.getElementById('activeCaseCount').textContent = activeCases.length;
+      const allCasesList = Object.values(allCasesData).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const activeList = allCasesList.filter(c => c.status !== 'CLOSED');
+      document.getElementById('activeCaseCount').textContent = activeList.length;
 
-      let filtered = allCases;
-      if (caseFilter === 'ACTIVE') filtered = allCases.filter(c => c.status !== 'CLOSED');
-      else if (caseFilter === 'CLOSED') filtered = allCases.filter(c => c.status === 'CLOSED');
+      let filtered = allCasesList;
+      if (caseFilter === 'ACTIVE') filtered = activeList;
+      else if (caseFilter === 'CLOSED') filtered = allCasesList.filter(c => c.status === 'CLOSED');
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前此篩選條件下無案件</div>`;
+        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前此篩選條件下無案件紀錄</div>`;
         return;
       }
 
+      const mergeableCount = allCasesList.filter(item => !(item.status === 'CLOSED' && item.mergedIntoCaseCode)).length;
+
       container.innerHTML = filtered.map(c => {
         const isClosed = c.status === 'CLOSED';
-        const isMergedOut = isClosed && Boolean(c.mergedIntoCaseCode);
+        const isMergedArchive = isClosed && !!c.mergedIntoCaseCode;
         const unitsList = Object.keys(c.assignedUnits || {});
-        const timelineArr = c.timeline
-          ? Object.values(c.timeline).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-          : [];
-
+        const timelineArr = c.timeline ? Object.values(c.timeline).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)) : [];
+        const hasCoords = !!(c.lat && c.lng);
         const a123Cfg = c.triageLevel && A123_CONFIG[c.triageLevel] ? A123_CONFIG[c.triageLevel] : null;
         const fiveCfg = c.hospitalTriageLevel && FIVE_LEVEL_CONFIG[c.hospitalTriageLevel] ? FIVE_LEVEL_CONFIG[c.hospitalTriageLevel] : null;
         const vsSummary = c.latestVitalSign ? formatVitalSignSummary(c.latestVitalSign) : '';
 
-        const timelineHtml = timelineArr.map(t => {
-          const entryVs = t.vitalSign ? `<div class="text-[11px] text-cyan-300 font-mono mt-0.5">💓 ${escapeHtml(formatVitalSignSummary(t.vitalSign))}</div>` : '';
-          return `
-            <div class="text-xs border-l-2 ${isClosed ? 'border-slate-600' : 'border-red-500'} pl-2 py-0.5">
-              <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span class="font-bold text-slate-200">${escapeHtml(t.actor || '')}</span>
-                <span class="font-mono">${formatTime(t.timestamp)}</span>
-              </div>
-              <div class="text-slate-300">${escapeHtml(t.note || '')}</div>
-              ${entryVs}
-            </div>
-          `;
-        }).join('');
-
         return `
-          <div class="p-3 rounded-xl border ${isClosed ? 'bg-slate-800/40 border-slate-800 opacity-85' : 'bg-slate-800/90 border-red-500/60 shadow-lg'}">
-            <div class="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+          <div class="rounded-xl border ${isClosed ? 'border-slate-700/80 bg-slate-800/45' : 'border-red-500/70 bg-slate-800/95'} p-3">
+            <div class="flex items-start justify-between gap-2 mb-1.5">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="px-2 py-0.5 rounded-md font-black text-xs ${isClosed ? 'bg-slate-700 text-slate-300' : 'bg-red-600 text-yellow-200'}">
                   ${escapeHtml(c.caseCode || '#???')}
                 </span>
-                <span class="text-xs font-bold ${isClosed ? 'text-slate-400' : 'text-red-400'}">
-                  ${isMergedOut ? `🔗 已併入 ${escapeHtml(c.mergedIntoCaseCode)}` : (isClosed ? '✅ 已結案' : '🚨 進行中')}
-                </span>
                 ${c.bibNumber ? `<span class="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-500/60 text-amber-200 font-mono font-bold text-[11px]">🏷️ ${escapeHtml(c.bibNumber)}</span>` : ''}
                 ${a123Cfg ? `<span class="px-1.5 py-0.5 rounded border font-black text-[11px] ${a123Cfg.bgClass}">${a123Cfg.label}</span>` : ''}
                 ${fiveCfg ? `<span class="px-1.5 py-0.5 rounded border font-black text-[11px] ${fiveCfg.bgClass}">🏥 ${escapeHtml(c.hospitalTriageLevel)}</span>` : ''}
+                <span class="text-[11px] font-bold ${isClosed ? 'text-slate-400' : 'text-red-400'}">
+                  ${isMergedArchive ? `🔗 已併入 ${escapeHtml(c.mergedIntoCaseCode)}` : (isClosed ? '✅ 已結案' : '🚨 進行中')}
+                </span>
+                <span class="text-[11px] text-slate-400 font-mono">${formatTime(c.createdAt)}</span>
               </div>
-              <span class="text-[11px] font-mono text-slate-400">
-                立案 ${formatTime(c.createdAt)}${c.closedAt ? ` · 結案 ${formatTime(c.closedAt)}` : ''}
-              </span>
+
+              ${!isClosed ? `
+                <button onclick="adminCloseCase('${c.caseId}')"
+                  class="px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold shrink-0">
+                  結案
+                </button>
+              ` : (!isMergedArchive ? `
+                <button onclick="reopenClosedCase('${c.caseId}')"
+                  class="px-2 py-0.5 rounded bg-amber-700 hover:bg-amber-600 text-yellow-100 text-[11px] font-bold shrink-0">
+                  🔄 重啟案件
+                </button>
+              ` : '')}
             </div>
 
             <div class="text-sm font-bold text-white mb-1">${escapeHtml(c.summary || '')}</div>
 
             ${vsSummary ? `
-              <div class="mb-1.5 px-2 py-1 rounded bg-cyan-950/50 border border-cyan-700/50 text-[11px] text-cyan-200 font-mono">
-                💓 最新 Vital Sign：${escapeHtml(vsSummary)}
+              <div class="text-[11px] text-cyan-200 bg-cyan-950/50 border border-cyan-700/50 rounded-lg px-2 py-1 mb-1.5 font-mono">
+                💓 ${escapeHtml(vsSummary)}
               </div>
             ` : ''}
 
-            ${c.transportDestination || c.departHospitalAt || c.arrivedHospitalAt ? `
-              <div class="mb-1.5 px-2 py-1 rounded bg-indigo-950/50 border border-indigo-700/50 text-[11px] text-indigo-200 flex flex-wrap gap-x-3 gap-y-0.5">
-                ${c.transportDestination ? `<span>🏥 後送：<strong>${escapeHtml(c.transportDestination)}</strong></span>` : ''}
-                ${c.departHospitalAt ? `<span>🚑 送醫：<strong>${formatTime(c.departHospitalAt)}</strong></span>` : ''}
-                ${c.arrivedHospitalAt ? `<span>🏁 到院：<strong>${formatTime(c.arrivedHospitalAt)}</strong></span>` : ''}
+            ${c.transportDestination ? `
+              <div class="text-[11px] text-indigo-200 font-bold mb-1">
+                🏥 後送目標：${escapeHtml(c.transportDestination)}
               </div>
             ` : ''}
 
@@ -4658,118 +4693,114 @@
               <span class="font-bold text-emerald-300">${unitsList.length > 0 ? escapeHtml(unitsList.join('、')) : '尚未指派'}</span>
             </div>
 
-            <div class="bg-slate-950/70 rounded-lg p-2 space-y-1.5 mb-2.5 max-h-40 overflow-y-auto">
-              ${timelineHtml || '<div class="text-xs text-slate-500">無時間軸紀錄</div>'}
-            </div>
-
-            <div class="flex flex-wrap gap-1.5">
-              ${!isMergedOut ? `
-                <button onclick="openAdminDispatchModal('', ${c.lat && c.lng ? `{lat:${c.lat},lng:${c.lng}}` : 'null'}, '', true, '${c.caseId}')"
-                  class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold">
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              ${!isMergedArchive ? `
+                <button onclick="openAdminDispatchModal('', ${hasCoords ? `{lat:${c.lat},lng:${c.lng}}` : 'null'}, '', true, '${c.caseId}')"
+                  class="px-2 py-1 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-[11px] font-bold">
                   ➕ 同案派遣
                 </button>
                 <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
-                  class="px-2.5 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
+                  class="px-2 py-1 rounded-lg bg-purple-700/80 hover:bg-purple-600 text-white text-[11px] font-bold">
                   🎙️ 無線電回報
                 </button>
-                <button onclick="openMergeCaseModal('${c.caseId}')"
-                  class="px-2.5 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold">
-                  🔗 合併
+                <button onclick="openRadioNoteModal('${c.caseId}', 'TRANSPORT_BOTH')"
+                  class="px-2 py-1 rounded-lg bg-cyan-800/90 hover:bg-cyan-700 text-cyan-100 text-[11px] font-bold">
+                  🚑 送醫/到院補登
+                </button>
+                ${mergeableCount >= 2 ? `
+                  <button onclick="openMergeCaseModal('${c.caseId}')"
+                    class="px-2 py-1 rounded-lg bg-indigo-800/90 hover:bg-indigo-700 text-indigo-100 text-[11px] font-bold">
+                    🔗 合併案號
+                  </button>
+                ` : ''}
+              ` : ''}
+              ${hasCoords ? `
+                <button onclick="map.flyTo([${c.lat}, ${c.lng}], 17)"
+                  class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-semibold">
+                  📍 定位事故點
                 </button>
               ` : ''}
+            </div>
 
-              ${c.lat && c.lng ? `
-                <button onclick="focusCaseOnMap('${c.caseId}')"
-                  class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">
-                  📍 定位
-                </button>
-              ` : ''}
-
-              ${!isClosed ? `
-                <button onclick="adminCloseCase('${c.caseId}')"
-                  class="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold ml-auto">
-                  ✅ 結案
-                </button>
-              ` : (!isMergedOut ? `
-                <button onclick="reopenClosedCase('${c.caseId}')"
-                  class="px-2.5 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold ml-auto">
-                  🔄 重啟案件
-                </button>
-              ` : '')}
+            <div class="bg-slate-950/70 rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto border border-slate-800">
+              ${timelineArr.map(t => {
+                const tVs = t.vitalSign ? ` <span class="text-cyan-300 font-mono">[${escapeHtml(formatVitalSignSummary(t.vitalSign))}]</span>` : '';
+                return `
+                  <div class="text-[11px] leading-snug">
+                    <span class="font-mono text-amber-400">[${formatTime(t.timestamp)}]</span>
+                    <span class="font-bold text-sky-300">${escapeHtml(t.actor)}:</span>
+                    <span class="text-slate-200">${escapeHtml(t.note)}</span>${tVs}
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
         `;
       }).join('');
     }
 
-    function focusCaseOnMap(caseId) {
-      const c = allCasesData[caseId];
-      if (c && c.lat && c.lng && map) {
-        map.flyTo([c.lat, c.lng], 17);
-      }
-    }
-
     function renderDispatchUnitList() {
       const container = document.getElementById('panelUnits');
       const now = Date.now();
-      const entries = Object.entries(allUnitsData || {});
-      const onlineEntries = entries.filter(([_, u]) => u.online && (now - (u.lastSeen || 0) < 180000));
-      document.getElementById('onlineCount').textContent = onlineEntries.length;
+      const entries = Object.entries(allUnitsData).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
+
+      const onlineCount = entries.filter(([_, u]) => u.online && (now - (u.lastSeen || 0) < 180000)).length;
+      document.getElementById('onlineCount').textContent = onlineCount;
 
       if (entries.length === 0) {
         container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>`;
         return;
       }
 
-      entries.sort((a, b) => {
-        const aOn = a[1].online && (now - (a[1].lastSeen || 0) < 180000) ? 1 : 0;
-        const bOn = b[1].online && (now - (b[1].lastSeen || 0) < 180000) ? 1 : 0;
-        if (aOn !== bOn) return bOn - aOn;
-        return String(a[1].callsign || '').localeCompare(String(b[1].callsign || ''), 'zh-Hant');
-      });
-
       container.innerHTML = entries.map(([unitId, u]) => {
         const isOnline = u.online && (now - (u.lastSeen || 0) < 180000);
-        const cfg = isOnline ? (STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY) : { label: '⚫ 離線', color: '#64748b', cssClass: 'status-offline' };
-        const isAmb = u.unitType === 'AMBULANCE';
-        const isStation = u.unitType === 'STATION';
-        const typeBadge = isAmb ? '🚑 救護車' : (isStation ? '⛺ 救護站' : '🏍️ 機巡');
-        const labelText = u.personName ? `${u.callsign}（${u.personName}）` : u.callsign;
-        const activeCase = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId] : null;
-        const devShort = u.deviceId ? u.deviceId.slice(-6) : '未知';
+        const cfg = isOnline ? (STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY) : { label: '⚪ 離線', color: '#64748b', cssClass: 'status-offline' };
+        const typeIcon = u.unitType === 'AMBULANCE' ? '🚑' : (u.unitType === 'STATION' ? '⛺' : '🏍️');
+        const titleText = u.personName ? `${u.callsign}（${u.personName}）` : u.callsign;
+        const activeCaseObj = u.activeCaseId ? allCasesData[u.activeCaseId] : null;
+        const hasCoords = !!(u.lat && u.lng);
 
         return `
-          <div class="p-3 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col gap-2">
+          <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-3 flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2 min-w-0">
-                <span class="w-3 h-3 rounded-full shrink-0 ${cfg.cssClass}"></span>
-                <span class="font-bold text-white text-sm truncate">${escapeHtml(labelText)}</span>
-                <span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 shrink-0">${typeBadge}</span>
-                ${activeCase ? `<span class="text-xs px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 font-bold shrink-0">${escapeHtml(activeCase.caseCode)}</span>` : ''}
+                <span class="text-lg">${typeIcon}</span>
+                <div class="min-w-0">
+                  <div class="font-bold text-white text-sm truncate">${escapeHtml(titleText)}</div>
+                  <div class="text-[11px] text-slate-400">
+                    ${formatTime(u.lastSeen)} · 裝置 <span class="font-mono text-slate-300">${escapeHtml(u.deviceId || '未知')}</span>
+                  </div>
+                </div>
               </div>
-              <span class="text-xs font-bold shrink-0" style="color:${cfg.color}">${cfg.label}</span>
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold text-white shrink-0 ${cfg.cssClass}">
+                ${cfg.label}
+              </span>
             </div>
 
-            <div class="flex items-center justify-between text-[11px] text-slate-400">
-              <span>${u.note ? escapeHtml(u.note) : '無最新備註'}</span>
-              <span class="font-mono">碼:${escapeHtml(devShort)} · ${formatTime(u.lastSeen)}</span>
+            ${activeCaseObj ? `
+              <div class="text-xs bg-red-950/60 border border-red-700/60 text-red-200 px-2.5 py-1 rounded-lg font-bold">
+                目前案件：${escapeHtml(activeCaseObj.caseCode)} - ${escapeHtml(activeCaseObj.summary)}
+              </div>
+            ` : ''}
+
+            <div class="text-xs text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg">
+              ${escapeHtml(u.note || '無最新回報')}
             </div>
 
-            <div class="flex gap-2 pt-1">
-              <button onclick="openAdminDispatchModal('${escapeJsString(u.callsign)}', ${u.lat && u.lng ? `{lat:${u.lat},lng:${u.lng}}` : 'null'}, '', false, '')"
+            <div class="flex gap-1.5 pt-0.5">
+              <button onclick="openAdminDispatchModal('${escapeJsString(u.callsign)}', null, '', false, '')"
                 class="flex-1 py-1.5 px-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold">
-                📢 派遣此單位
+                🚨 指派任務
               </button>
-              ${u.lat && u.lng ? `
+              ${hasCoords ? `
                 <button onclick="map.flyTo([${u.lat}, ${u.lng}], 17)"
-                  class="py-1.5 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">
+                  class="py-1.5 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold">
                   📍 定位
                 </button>
               ` : ''}
               ${(isOnline && adminLevel === 'SUPER_ADMIN') ? `
-                <button onclick="adminKickUnit('${escapeJsString(unitId)}', '${escapeJsString(labelText)}')"
-                  title="強制此單位離線"
-                  class="py-1.5 px-2 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 text-xs font-bold">
+                <button onclick="adminKickUnit('${escapeJsString(unitId)}', '${escapeJsString(titleText)}')"
+                  class="py-1.5 px-2 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 text-xs font-semibold" title="強制離線">
                   踢除
                 </button>
               ` : ''}
@@ -4781,29 +4812,24 @@
 
     function renderPoisPanel() {
       const container = document.getElementById('poisListContainer');
-      const entries = Object.entries(allPoisData || {});
-      if (entries.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-6">尚未標註任何賽道站點</div>`;
+      const list = Object.values(allPoisData).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+      if (list.length === 0) {
+        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-6">尚未標註任何賽道站點（可按上方「標站」或「新增站點」）</div>`;
         return;
       }
 
-      container.innerHTML = entries.map(([poiId, p]) => {
-        const cfg = POI_TYPES[p.type] || POI_TYPES.MEDICAL;
+      container.innerHTML = list.map(poi => {
+        const cfg = POI_TYPES[poi.type] || POI_TYPES.MEDICAL;
         return `
-          <div class="p-3 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-2">
+          <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-2.5 flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="font-bold text-sm text-white truncate">${cfg.icon} ${escapeHtml(p.name)}</div>
-              <div class="text-xs text-slate-400">${cfg.label}${p.note ? ` · ${escapeHtml(p.note)}` : ''}</div>
+              <div class="text-xs font-bold text-white truncate">${cfg.icon} ${escapeHtml(poi.name)} <span class="text-slate-400 font-normal">(${cfg.label})</span></div>
+              ${poi.note ? `<div class="text-[11px] text-slate-400 truncate">${escapeHtml(poi.note)}</div>` : ''}
             </div>
             <div class="flex gap-1.5 shrink-0">
-              <button onclick="map.flyTo([${p.lat}, ${p.lng}], 17)"
-                class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">
-                📍
-              </button>
-              <button onclick="deletePoiMarker('${poiId}', '${escapeJsString(p.name)}')"
-                class="px-2.5 py-1.5 rounded-lg bg-red-900/70 hover:bg-red-800 text-red-200 text-xs font-bold">
-                🗑️
-              </button>
+              <button onclick="map.flyTo([${poi.lat}, ${poi.lng}], 17)" class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white">📍</button>
+              <button onclick="deletePoiMarker('${poi.poiId}', '${escapeJsString(poi.name)}')" class="px-2 py-1 rounded bg-rose-900/80 hover:bg-rose-800 text-xs text-rose-200">🗑️</button>
             </div>
           </div>
         `;
@@ -4811,7 +4837,7 @@
     }
 
     // =========================================================================
-    // 15. 時間格式化與 XSS 防護工具
+    // 15. 工具函式
     // =========================================================================
     function formatTime(ts) {
       if (!ts) return '--:--:--';
@@ -4822,7 +4848,7 @@
     function formatFullDateTime(ts) {
       if (!ts) return '';
       const d = new Date(ts);
-      const pad = (n) => String(n).padStart(2, '0');
+      const pad = n => String(n).padStart(2, '0');
       return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }
 
@@ -4831,8 +4857,7 @@
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replace(/"/g, '&quot;');
     }
 
     function escapeJsString(str) {
