@@ -272,32 +272,32 @@
     <!-- 地圖容器 -->
     <div id="map" class="flex-1 h-full w-full z-0"></div>
 
-<!-- 管理員地圖右上角：放大鏡搜尋按鈕與展開搜尋面板 -->
-<div id="adminMapSearchContainer" class="hidden fixed md:absolute top-14 right-4 z-[1060] flex flex-col items-end max-w-[340px]">
-  <button type="button" id="btnToggleMapSearch" onclick="toggleAdminMapSearch()" title="搜尋地標、路名或賽道站點"
-    class="bg-slate-900/95 hover:bg-slate-800 text-sky-300 border border-sky-500/60 px-3.5 py-2 rounded-full shadow-2xl text-xs font-extrabold flex items-center gap-1.5 transition shrink-0">
-    <span>🔍</span>
-    <span>地圖搜尋</span>
-  </button>
-
-  <div id="adminMapSearchPanel" class="hidden mt-2 w-80 bg-slate-900/95 border border-slate-600 rounded-2xl p-3 shadow-2xl backdrop-blur-sm">
-    <div class="flex items-center justify-between mb-1.5">
-      <span class="text-xs font-bold text-sky-300">🔍 搜尋地標 / 路名 / 站點</span>
-      <button type="button" onclick="toggleAdminMapSearch(false)" class="text-slate-400 hover:text-white text-xs px-1">✕</button>
-    </div>
-    <div class="flex gap-1.5">
-      <input type="text" id="mapMagnifierInput" placeholder="輸入地標、路名、站點或 5K..."
-        onkeydown="if(event.key==='Enter'){ event.preventDefault(); executeMagnifierSearch(); }"
-        class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-sky-400" />
-      <button type="button" onclick="executeMagnifierSearch()"
-        class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shrink-0">
-        搜尋
+<!-- 管理員地圖左上角（縮放按鈕旁）：放大鏡搜尋按鈕與展開搜尋面板，完全避開右側管理員側邊欄 -->
+    <div id="adminMapSearchContainer" class="hidden absolute top-3 left-14 z-[1050] flex flex-col items-start max-w-[calc(100vw-4.5rem)] md:max-w-[340px]">
+      <button type="button" id="btnToggleMapSearch" onclick="toggleAdminMapSearch()" title="搜尋地標、路名或賽道站點"
+        class="bg-slate-900/95 hover:bg-slate-800 text-sky-300 border border-sky-500/60 px-3.5 py-2 rounded-full shadow-2xl text-xs font-extrabold flex items-center gap-1.5 transition shrink-0">
+        <span>🔍</span>
+        <span>地圖搜尋</span>
       </button>
+
+      <div id="adminMapSearchPanel" class="hidden mt-2 w-72 sm:w-80 bg-slate-900/95 border border-slate-600 rounded-2xl p-3 shadow-2xl backdrop-blur-sm">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-sky-300">🔍 搜尋地標 / 路名 / 站點</span>
+          <button type="button" onclick="toggleAdminMapSearch(false)" class="text-slate-400 hover:text-white text-xs px-1">✕</button>
+        </div>
+        <div class="flex gap-1.5">
+          <input type="text" id="mapMagnifierInput" placeholder="輸入地標、路名、站點或 5K..."
+            onkeydown="if(event.key==='Enter'){ event.preventDefault(); executeMagnifierSearch(); }"
+            class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-sky-400" />
+          <button type="button" onclick="executeMagnifierSearch()"
+            class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shrink-0">
+            搜尋
+          </button>
+        </div>
+        <div id="mapMagnifierStatus" class="text-[11px] text-slate-400 mt-1.5">國土測繪中心底圖 · 支援台灣地標與賽道站點</div>
+        <div id="mapMagnifierResults" class="hidden mt-2 max-h-48 overflow-y-auto space-y-1"></div>
+      </div>
     </div>
-    <div id="mapMagnifierStatus" class="text-[11px] text-slate-400 mt-1.5">國土測繪中心底圖 · 支援台灣地標與賽道站點</div>
-    <div id="mapMagnifierResults" class="hidden mt-2 max-h-48 overflow-y-auto space-y-1"></div>
-  </div>
-</div>
 
     <!-- 管理員地圖選點提示浮動條 -->
     <div id="mapPickBanner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-[1100] bg-amber-600 text-white px-4 py-2 rounded-full shadow-2xl border-2 border-yellow-200 flex items-center gap-3 text-xs font-bold whitespace-nowrap">
