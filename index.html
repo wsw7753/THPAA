@@ -1263,8 +1263,10 @@
     const DB_ROOT = 'marathon_ems_tracker';
     const OFFLINE_QUEUE_KEY = 'ems_offline_queue_v1';
     const BOARD_AUTH_SESSION_KEY = 'ems_board_auth_pass_v1';
-    const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc74f2be62fd381cf46b4c3974dd557c0bbec86712';
-    const SUPER_ADMIN_PASSWORD_SHA256 = '7a116188d9c095ee8a25641a10f9d5a066a1d194d936c33b414beed212d2154b';
+    // 派遣密碼: 8868
+    const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
+    // 最高權限管理員密碼: 886885
+    const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
 
     async function sha256Hex(plainText) {
       const encoder = new TextEncoder();
@@ -1699,7 +1701,6 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get('board') !== '1') return;
 
-      // 先稍候讓系統設定同步
       await new Promise(r => setTimeout(r, 450));
       selectRole('board');
 
@@ -1824,7 +1825,6 @@
         }
       }
 
-      // 若目前正在看戰情看板，同步顯示/隱藏被停用的即時遮罩與遮罩提示標籤
       const revokedOverlay = document.getElementById('boardRevokedOverlay');
       if (revokedOverlay) {
         if (selectedRole === 'board' && !boardEnabled) {
@@ -2461,7 +2461,6 @@
         const latestEntry = timelineArr.length > 0 ? timelineArr[timelineArr.length - 1] : null;
         const vsSummary = c.latestVitalSign ? formatVitalSignSummary(c.latestVitalSign) : '';
 
-        // 敏感遮罩處理：號碼布遮罩、Vital Sign 與詳細傷情處置備註隱藏
         const displayBib = c.bibNumber ? maskBibNumber(c.bibNumber) : '';
         const displaySummary = boardMaskSensitive
           ? '🔒 [敏感傷情與處置細節已由總站遮罩]'
@@ -4535,14 +4534,14 @@
           <div style="color:#0f172a; min-width:150px;">
             <div style="font-weight:900; font-size:13px;">${cfg.icon} ${escapeHtml(poi.name)}</div>
             <div style="font-size:11px; color:#475569;">類型：${cfg.label}</div>
-            ${poi.note ? `<div style="font-size:12px; margin-top:3px;">${escapeHtml(poi.note)}</div>` : ''}
+            ${poi.note ? `<div style="font-size:11px; color:#0f172a; margin-top:2px;">備註：${escapeHtml(poi.note)}</div>` : ''}
           </div>
         `;
         poiMarkersMap[poiId] = L.marker([poi.lat, poi.lng], { icon }).addTo(map).bindPopup(popup);
       });
     }
 
-    // ==================== 管理員左側面板渲染：案件列表 ====================
+    // ==================== 渲染管理員「案件追蹤」列表 ====================
     function renderCasesPanel() {
       const container = document.getElementById('casesListContainer');
       const allList = Object.values(allCasesData).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -4556,7 +4555,7 @@
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">此分類目前無案件紀錄</div>`;
+        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">此分類下目前無案件紀錄</div>`;
         return;
       }
 
@@ -4567,96 +4566,100 @@
         const hasCoords = Boolean(c.lat && c.lng);
         const a123Cfg = c.triageLevel && A123_CONFIG[c.triageLevel] ? A123_CONFIG[c.triageLevel] : null;
         const fiveCfg = c.hospitalTriageLevel && FIVE_LEVEL_CONFIG[c.hospitalTriageLevel] ? FIVE_LEVEL_CONFIG[c.hospitalTriageLevel] : null;
-        const latestVsText = c.latestVitalSign ? formatVitalSignSummary(c.latestVitalSign) : '';
+        const vsSummary = c.latestVitalSign ? formatVitalSignSummary(c.latestVitalSign) : '';
 
         return `
-          <div class="rounded-xl border ${isClosed ? 'border-slate-700 bg-slate-800/40' : 'border-red-500/70 bg-slate-800/95'} p-3 shadow">
-            <div class="flex items-start justify-between gap-2 mb-1.5">
-              <div class="flex items-center flex-wrap gap-1.5">
-                <span class="px-2 py-0.5 rounded-md font-black text-xs ${isClosed ? 'bg-slate-700 text-slate-300' : 'bg-red-600 text-yellow-200'}">
+          <div class="p-3 rounded-xl border ${isClosed ? 'border-slate-700 bg-slate-800/40' : 'border-red-500/70 bg-slate-800/90'}">
+            <div class="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="px-2 py-0.5 rounded-md font-black text-xs ${isClosed ? 'bg-slate-600 text-slate-200' : 'bg-red-600 text-yellow-200'}">
                   ${escapeHtml(c.caseCode || '#???')}
                 </span>
                 ${c.bibNumber ? `<span class="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-500/60 text-amber-200 font-mono font-bold text-[11px]">🏷️ ${escapeHtml(c.bibNumber)}</span>` : ''}
                 ${a123Cfg ? `<span class="px-1.5 py-0.5 rounded border font-black text-[11px] ${a123Cfg.bgClass}">${a123Cfg.label}</span>` : ''}
                 ${fiveCfg ? `<span class="px-1.5 py-0.5 rounded border font-black text-[11px] ${fiveCfg.bgClass}">🏥 ${escapeHtml(c.hospitalTriageLevel)}</span>` : ''}
-                <span class="text-[11px] font-bold ${isClosed ? 'text-slate-400' : 'text-red-400'}">
-                  ${isClosed ? (c.mergedIntoCaseCode ? `🔗 已併入 ${escapeHtml(c.mergedIntoCaseCode)}` : '✅ 已結案') : '🚨 進行中'}
+                <span class="text-xs font-bold ${isClosed ? 'text-slate-400' : 'text-red-300'}">
+                  ${c.mergedIntoCaseCode ? `已併入 ${escapeHtml(c.mergedIntoCaseCode)}` : (isClosed ? '已結案' : '進行中')}
                 </span>
               </div>
-              <span class="text-[11px] text-slate-400 font-mono shrink-0">${formatTime(c.createdAt)}</span>
+              <span class="text-[11px] text-slate-400 font-mono">通報 ${formatTime(c.createdAt)}</span>
             </div>
 
             <div class="text-sm font-bold text-white mb-1">${escapeHtml(c.summary || '')}</div>
 
-            ${latestVsText ? `
-              <div class="text-[11px] text-cyan-200 bg-cyan-950/50 border border-cyan-700/60 rounded-lg px-2 py-1 mb-1.5 font-mono">
-                💓 最新 VS：${escapeHtml(latestVsText)}
+            ${vsSummary ? `
+              <div class="mb-1.5 px-2 py-1 rounded bg-cyan-950/60 border border-cyan-700/60 text-[11px] text-cyan-200 font-mono">
+                💓 ${escapeHtml(vsSummary)}
               </div>
             ` : ''}
 
             ${c.transportDestination ? `
-              <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-700/50 rounded-lg px-2 py-1 mb-1.5">
-                🏥 後送醫院／總站：<strong>${escapeHtml(c.transportDestination)}</strong>
-                ${c.departHospitalAt ? ` ｜ 🚑 送醫 ${formatTime(c.departHospitalAt)}` : ''}
-                ${c.arrivedHospitalAt ? ` ｜ 🏥 到院 ${formatTime(c.arrivedHospitalAt)}` : ''}
+              <div class="text-xs font-bold text-cyan-300 mb-1">🏥 後送醫院/總站：${escapeHtml(c.transportDestination)}</div>
+            ` : ''}
+
+            ${(c.departHospitalAt || c.arrivedHospitalAt) ? `
+              <div class="flex flex-wrap gap-2 text-[11px] mb-1.5 font-mono">
+                ${c.departHospitalAt ? `<span class="px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-700/60">🚑 送醫 ${formatTime(c.departHospitalAt)}</span>` : ''}
+                ${c.arrivedHospitalAt ? `<span class="px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-200 border border-indigo-700/60">🏥 到院 ${formatTime(c.arrivedHospitalAt)}</span>` : ''}
               </div>
-            ` : (c.departHospitalAt || c.arrivedHospitalAt ? `
-              <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-700/50 rounded-lg px-2 py-1 mb-1.5">
-                ${c.departHospitalAt ? `🚑 送醫時間：${formatTime(c.departHospitalAt)}` : ''}
-                ${c.arrivedHospitalAt ? ` ｜ 🏥 抵達醫院：${formatTime(c.arrivedHospitalAt)}` : ''}
-              </div>
-            ` : '')}
+            ` : ''}
 
             <div class="text-xs text-slate-300 mb-2">
-              <span class="text-slate-400">出勤單位：</span>
-              <span class="font-bold text-emerald-300">${unitsList.length > 0 ? escapeHtml(unitsList.join('、')) : '待指派'}</span>
+              出勤單位：<span class="font-bold text-emerald-300">${unitsList.length > 0 ? escapeHtml(unitsList.join('、')) : '待指派'}</span>
             </div>
 
-            <div class="bg-slate-950/70 rounded-lg p-2 mb-2.5 space-y-1 max-h-36 overflow-y-auto border border-slate-800">
-              ${timelineArr.map(t => `
-                <div class="text-[11px] text-slate-300 leading-snug">
-                  <span class="text-slate-500 font-mono">[${formatTime(t.timestamp)}]</span>
-                  <span class="font-bold text-amber-300">${escapeHtml(t.actor)}</span>：${escapeHtml(t.note)}
-                  ${t.vitalSign ? `<span class="text-cyan-300 font-mono"> [${escapeHtml(formatVitalSignSummary(t.vitalSign))}]</span>` : ''}
-                </div>
-              `).join('')}
+            <div class="bg-slate-900/90 rounded-lg p-2 mb-2 border border-slate-700/80 space-y-1 max-h-36 overflow-y-auto">
+              ${timelineArr.map(t => {
+                const tVs = t.vitalSign ? ` <span class="text-cyan-300 font-mono">[${escapeHtml(formatVitalSignSummary(t.vitalSign))}]</span>` : '';
+                return `
+                  <div class="text-[11px] leading-snug text-slate-300">
+                    <span class="text-slate-400 font-mono">${formatTime(t.timestamp)}</span>
+                    <span class="font-bold text-amber-200">[${escapeHtml(t.actor || '')}]</span>
+                    <span>${escapeHtml(t.note || '')}</span>${tVs}
+                  </div>
+                `;
+              }).join('')}
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            <div class="flex flex-wrap gap-1.5">
               ${hasCoords ? `
-                <button onclick="focusCaseOnMap('${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold">
-                  📍 定位事故點
+                <button onclick="flyToCoords(${c.lat}, ${c.lng})"
+                  class="px-2 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold">
+                  📍 定位
                 </button>
               ` : ''}
-
-              <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
-                class="py-1.5 px-2 rounded-lg bg-purple-700/90 hover:bg-purple-600 text-white text-xs font-bold">
-                🎙️ 無線電補述
-              </button>
-
               ${!isClosed ? `
-                <button onclick="openRadioNoteModal('${c.caseId}', 'TRANSPORT_BOTH')"
+                <button onclick="openAdminDispatchModal('', null, '', true, '${c.caseId}')"
+                  class="flex-1 py-1.5 px-2 rounded-lg bg-blue-600/85 hover:bg-blue-500 text-white text-xs font-bold">
+                  ➕ 同案派遣
+                </button>
+                <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
+                  class="py-1.5 px-2 rounded-lg bg-purple-700/85 hover:bg-purple-600 text-white text-xs font-bold">
+                  🎙️ 無線電補述
+                </button>
+                <button onclick="openRadioNoteModal('${c.caseId}', 'TRANSPORTING')"
                   class="py-1.5 px-2 rounded-lg bg-cyan-700/90 hover:bg-cyan-600 text-white text-xs font-bold">
                   🚑 代記送醫/到院
                 </button>
-                <button onclick="openAdminDispatchModal('', null, '', true, '${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">
-                  ➕ 同案增派/再派
-                </button>
                 <button onclick="openMergeCaseModal('${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-indigo-700/90 hover:bg-indigo-600 text-white text-xs font-bold">
-                  🔗 案號合併
+                  class="py-1.5 px-2 rounded-lg bg-indigo-700/85 hover:bg-indigo-600 text-white text-xs font-bold">
+                  🔗 合併案號
                 </button>
                 <button onclick="adminCloseCase('${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold">
+                  class="py-1.5 px-2 rounded-lg bg-emerald-700/85 hover:bg-emerald-600 text-white text-xs font-bold">
                   ✅ 結案
                 </button>
               ` : `
-                <button onclick="openMergeCaseModal('${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-indigo-700/80 hover:bg-indigo-600 text-white text-xs font-bold">
-                  🔗 案號合併
+                <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
+                  class="py-1.5 px-2.5 rounded-lg bg-purple-800/80 hover:bg-purple-700 text-white text-xs font-semibold">
+                  🎙️ 補登紀錄
                 </button>
+                ${!c.mergedIntoCaseCode ? `
+                  <button onclick="openMergeCaseModal('${c.caseId}')"
+                    class="py-1.5 px-2.5 rounded-lg bg-indigo-800/80 hover:bg-indigo-700 text-white text-xs font-semibold">
+                    🔗 併入他案
+                  </button>
+                ` : ''}
               `}
             </div>
           </div>
@@ -4664,94 +4667,103 @@
       }).join('');
     }
 
-    function focusCaseOnMap(caseId) {
-      const c = allCasesData[caseId];
-      if (c && c.lat && c.lng && map) {
-        map.flyTo([c.lat, c.lng], 17);
-        if (caseMarkersMap[caseId]) caseMarkersMap[caseId].openPopup();
-      }
-    }
-
-    // ==================== 管理員左側面板渲染：單位列表 ====================
+    // ==================== 渲染管理員「執勤單位」列表 ====================
     function renderDispatchUnitList() {
       const container = document.getElementById('panelUnits');
       const now = Date.now();
-      const entries = Object.entries(allUnitsData);
+      const entries = Object.entries(allUnitsData).sort((a, b) => {
+        const score = (s) => (s === 'DISPATCHED' ? 0 : s === 'ARRIVED' ? 1 : s === 'TRANSPORTING' ? 2 : s === 'AT_HOSPITAL' ? 3 : 4);
+        return score(a[1].status) - score(b[1].status);
+      });
 
-      const onlineEntries = entries.filter(([, u]) => u.online && (now - (u.lastSeen || 0) < 180000));
-      document.getElementById('onlineCount').textContent = onlineEntries.length;
+      let onlineCount = 0;
+      const cardsHtml = entries.map(([unitId, u]) => {
+        const isOnline = u.online && (now - (u.lastSeen || 0) < 180000);
+        if (isOnline) onlineCount++;
 
+        const cfg = STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY;
+        const typeIcon = u.unitType === 'AMBULANCE' ? '🚑' : (u.unitType === 'STATION' ? '⛺' : '🏍️');
+        const labelText = u.personName ? `${u.callsign}（${u.personName}）` : u.callsign;
+        const activeCase = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId] : null;
+        const isSuper = adminLevel === 'SUPER_ADMIN';
+
+        return `
+          <div class="p-3 rounded-xl border ${isOnline ? 'border-slate-700 bg-slate-800/80' : 'border-slate-800 bg-slate-900/40 opacity-60'}">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="font-bold text-white text-sm flex items-center gap-1.5 min-w-0">
+                <span>${typeIcon}</span>
+                <span class="truncate">${escapeHtml(labelText)}</span>
+                ${activeCase ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 text-[11px] font-black shrink-0">${escapeHtml(activeCase.caseCode)}</span>` : ''}
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${isOnline ? cfg.cssClass : 'status-offline'}">
+                ${isOnline ? cfg.short : '離線'}
+              </span>
+            </div>
+
+            ${u.note ? `<div class="text-xs text-slate-300 mb-1.5 break-words">💬 ${escapeHtml(u.note)}</div>` : ''}
+
+            <div class="flex items-center justify-between text-[11px] text-slate-400 mb-2">
+              <span class="font-mono">裝置碼：${escapeHtml(u.deviceId || '未知')}</span>
+              <span>更新：${formatTime(u.lastSeen)}</span>
+            </div>
+
+            <div class="flex gap-1.5">
+              <button onclick="flyToUnit('${unitId}')" ${!u.lat ? 'disabled' : ''}
+                class="flex-1 py-1.5 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-semibold text-white">
+                📍 地圖定位
+              </button>
+              <button onclick="openAdminDispatchModal('${escapeJsString(u.callsign)}', null, '', ${Boolean(activeCase)}, '${activeCase ? activeCase.caseId : ''}')"
+                class="flex-1 py-1.5 px-2 rounded-lg bg-amber-600/85 hover:bg-amber-500 text-xs font-bold text-white">
+                ${activeCase ? `➕ 同案再派 (${activeCase.caseCode})` : '📢 指派案件'}
+              </button>
+              ${(isOnline && isSuper) ? `
+                <button onclick="adminKickUnit('${unitId}', '${escapeJsString(labelText)}')" title="強制將此單位設為離線"
+                  class="py-1.5 px-2 rounded-lg bg-rose-900/80 hover:bg-rose-700 text-rose-200 text-xs font-bold">
+                  踢除
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('onlineCount').textContent = onlineCount;
+      container.innerHTML = entries.length > 0
+        ? cardsHtml
+        : '<div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>';
+    }
+
+    // ==================== 渲染管理員「賽道站點」列表 ====================
+    function renderPoisPanel() {
+      const container = document.getElementById('poisListContainer');
+      const entries = Object.entries(allPoisData);
       if (entries.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-8">目前尚無單位上線...</div>`;
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm py-6">尚未標註任何賽道站點</div>';
         return;
       }
 
-      entries.sort((a, b) => {
-        const aOnline = a[1].online && (now - (a[1].lastSeen || 0) < 180000);
-        const bOnline = b[1].online && (now - (b[1].lastSeen || 0) < 180000);
-        if (aOnline && !bOnline) return -1;
-        if (!aOnline && bOnline) return 1;
-        return (b[1].updatedAt || 0) - (a[1].updatedAt || 0);
-      });
-
-      const isSuper = adminLevel === 'SUPER_ADMIN';
-
-      container.innerHTML = entries.map(([unitId, u]) => {
-        const isOnline = u.online && (now - (u.lastSeen || 0) < 180000);
-        const cfg = isOnline ? (STATUS_CONFIG[u.status] || STATUS_CONFIG.STANDBY) : { label: '⚫ 離線', cssClass: 'status-offline' };
-        const isAmb = u.unitType === 'AMBULANCE';
-        const isStation = u.unitType === 'STATION';
-        const typeEmoji = isAmb ? '🚑' : (isStation ? '⛺' : '🏍️');
-        const labelText = u.personName ? `${u.callsign}（${u.personName}）` : u.callsign;
-        const activeCase = u.activeCaseId && allCasesData[u.activeCaseId] ? allCasesData[u.activeCaseId] : null;
-        const devTag = u.deviceId ? u.deviceId.slice(-6) : '未知';
-
+      container.innerHTML = entries.map(([poiId, poi]) => {
+        const cfg = POI_TYPES[poi.type] || POI_TYPES.MEDICAL;
         return `
-          <div class="p-3 rounded-xl bg-slate-800/90 border ${u.status === 'DISPATCHED' && isOnline ? 'border-red-500/70' : 'border-slate-700'}">
-            <div class="flex items-center justify-between gap-2 mb-1.5">
-              <div class="font-bold text-white text-sm truncate">
-                ${typeEmoji} ${escapeHtml(labelText)}
-                <span class="text-[10px] text-slate-400 font-mono ml-1">[機碼:${escapeHtml(devTag)}]</span>
-                ${activeCase ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 text-[10px] font-black">${escapeHtml(activeCase.caseCode)}</span>` : ''}
-              </div>
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${cfg.cssClass}">
-                ${cfg.label}
-              </span>
+          <div class="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-white truncate">${cfg.icon} ${escapeHtml(poi.name)}</div>
+              <div class="text-[11px] text-slate-400 truncate">${cfg.label}${poi.note ? ` · ${escapeHtml(poi.note)}` : ''}</div>
             </div>
-
-            <div class="text-xs text-slate-300 mb-2 truncate">
-              ${u.note ? `備註：${escapeHtml(u.note)}` : '無備註'}
-            </div>
-
-            <div class="flex items-center justify-between gap-1.5">
-              <span class="text-[11px] text-slate-500 font-mono">
-                更新：${formatTime(u.lastSeen)}
-              </span>
-              <div class="flex gap-1.5">
-                ${u.lat && u.lng ? `
-                  <button onclick="focusUnit('${unitId}')"
-                    class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 font-semibold">
-                    定位
-                  </button>
-                ` : ''}
-                <button onclick="openAdminDispatchModal('${escapeHtml(u.callsign)}')"
-                  class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs text-white font-bold">
-                  📢 派案
-                </button>
-                ${isOnline && isSuper ? `
-                  <button onclick="adminKickUnit('${unitId}', '${escapeHtml(labelText)}')" title="最高權限管理員可強制離線"
-                    class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-rose-700 text-xs text-slate-300 hover:text-white font-semibold">
-                    踢除
-                  </button>
-                ` : ''}
-              </div>
+            <div class="flex gap-1.5 shrink-0">
+              <button onclick="flyToCoords(${poi.lat}, ${poi.lng})" class="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white">
+                定位
+              </button>
+              <button onclick="deletePoiMarker('${poiId}', '${escapeJsString(poi.name)}')" class="px-2 py-1 rounded bg-red-900/70 hover:bg-red-700 text-xs text-red-200">
+                刪除
+              </button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    function focusUnit(unitId) {
+    function flyToUnit(unitId) {
       const u = allUnitsData[unitId];
       if (u && u.lat && u.lng && map) {
         map.flyTo([u.lat, u.lng], 17);
@@ -4759,37 +4771,9 @@
       }
     }
 
-    // ==================== 管理員左側面板渲染：站點列表 ====================
-    function renderPoisPanel() {
-      const container = document.getElementById('poisListContainer');
-      const entries = Object.entries(allPoisData);
-      if (entries.length === 0) {
-        container.innerHTML = `<div class="text-center text-slate-500 text-sm py-6">尚未標註任何賽道站點</div>`;
-        return;
-      }
-
-      container.innerHTML = entries.map(([poiId, poi]) => {
-        const cfg = POI_TYPES[poi.type] || POI_TYPES.MEDICAL;
-        return `
-          <div class="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-sm font-bold text-white truncate">${cfg.icon} ${escapeHtml(poi.name)}</div>
-              <div class="text-xs text-slate-400 truncate">${poi.note ? escapeHtml(poi.note) : cfg.label}</div>
-            </div>
-            <div class="flex gap-1.5 shrink-0">
-              <button onclick="focusPoi('${poiId}')" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-white font-semibold">定位</button>
-              <button onclick="deletePoiMarker('${poiId}', '${escapeHtml(poi.name)}')" class="px-2 py-1 rounded-lg bg-red-900/80 hover:bg-red-700 text-xs text-red-200 font-semibold">刪除</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function focusPoi(poiId) {
-      const poi = allPoisData[poiId];
-      if (poi && poi.lat && poi.lng && map) {
-        map.flyTo([poi.lat, poi.lng], 17);
-        if (poiMarkersMap[poiId]) poiMarkersMap[poiId].openPopup();
+    function flyToCoords(lat, lng) {
+      if (lat && lng && map) {
+        map.flyTo([lat, lng], 17);
       }
     }
 
@@ -4799,29 +4783,31 @@
     function formatTime(ts) {
       if (!ts) return '--:--:--';
       const d = new Date(ts);
-      return d.toTimeString().split(' ')[0];
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
     }
 
     function formatFullDateTime(ts) {
       if (!ts) return '';
       const d = new Date(ts);
-      const pad = n => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      const yyyy = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mo}-${dd} ${formatTime(ts)}`;
     }
 
     function escapeHtml(str) {
-      if (!str) return '';
-      return String(str)
+      return String(str || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        .replace(/"/g, '&quot;');
     }
 
     function escapeJsString(str) {
-      if (!str) return '';
-      return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
   </script>
 </body>
