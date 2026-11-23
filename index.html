@@ -771,7 +771,7 @@
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">🩺 傷患檢傷分級：</label>
           <select id="radioTriageSelect"
-            class="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-white font-bold text-xs focus:outline-none focus:border-purple-400">
+            class="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-white font-bold text-xs focus:outline-none focus:border-purple-400">
             <option value="">維持/未分級</option>
             <option value="GREEN">🟢 綠牌（輕傷）</option>
             <option value="YELLOW">🟡 黃牌（中度）</option>
@@ -1091,6 +1091,7 @@
     const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
+    const DISPATCH_NO_RESPONSE_MS = 45000; // 派遣超過 45 秒未確認視為「派遣無回應」
 
     async function sha256Hex(text) {
       if (!window.crypto || !window.crypto.subtle) {
@@ -1139,6 +1140,7 @@
 
     let audioCtx = null;
     let alertRepeatTimer = null;
+    let noResponseTickerTimer = null;
     let latestDispatchObj = null;
     let lastHandledDispatchId = localStorage.getItem('ems_last_dispatch_id') || '';
 
@@ -1177,7 +1179,7 @@
 
     const TRIAGE_META = {
       GREEN:  { label: '🟢 綠牌', text: '綠牌(輕傷)', badgeClass: 'bg-emerald-700 text-emerald-100 border-emerald-400', borderClass: 'border-emerald-500/80' },
-      YELLOW: { label: '🟡 黃牌', text: '黃牌(中度)', badgeClass: 'bg-amber-600 text-yellow-100 border-yellow-300', borderClass: 'border-amber-400/85' },
+      YELLOW: { label: '🟡 黃牌', text: '黃牌(中度)', badgeClass: 'bg-amber-600 text-yellow-100 border-amber-300', borderClass: 'border-amber-400/85' },
       RED:    { label: '🔴 紅牌', text: '紅牌(危急)', badgeClass: 'bg-red-600 text-white border-red-300', borderClass: 'border-red-500' },
       BLACK:  { label: '⚫ 黑牌', text: '黑牌',       badgeClass: 'bg-slate-950 text-slate-200 border-slate-500', borderClass: 'border-slate-500' }
     };
@@ -1213,6 +1215,36 @@
 
     function isHqPoiItem(poi) {
       return Boolean(poi && (poi.isHQ || (poi.name && poi.name.trim() === '救護總站')));
+    }
+
+    // 計算逾時未確認接案的派遣紀錄（管理員端用來判斷「派遣無回應」）
+    function getNoResponseDispatches(nowTs = Date.now()) {
+      const list = [];
+      Object.entries(allDispatchesData || {}).forEach(([id, d]) => {
+        if (!d || d.acknowledged === true) return;
+        const ts = Number(d.timestamp || 0);
+        if (!ts || (nowTs - ts) < DISPATCH_NO_RESPONSE_MS) return;
+
+        const linkedCase = d.caseId ? allCasesData[d.caseId] : null;
+        if (linkedCase && linkedCase.status !== 'ACTIVE') return;
+
+        const elapsedSec = Math.floor((nowTs - ts) / 1000);
+        list.push({
+          id,
+          ...d,
+          elapsedSec
+        });
+      });
+      return list;
+    }
+
+    function startNoResponseTicker() {
+      if (noResponseTickerTimer) clearInterval(noResponseTickerTimer);
+      noResponseTickerTimer = setInterval(() => {
+        if (!isSystemStarted || !isAdminRole()) return;
+        renderCasesOnMapAndSidebar();
+        renderUnitsOnMapAndSidebar();
+      }, 5000);
     }
 
     function computeDistanceMeters(lat1, lng1, lat2, lng2) {
@@ -1402,7 +1434,7 @@
         const code = `救護車${i}`;
         const isTaken = occupiedSet.has(code);
         html += `<option value="${code}" ${isTaken ? 'disabled' : ''} ${code === targetSelect && !isTaken ? 'selected' : ''}>
-          ${isTaken ? `🚫 ${code} (救護車已登入鎖定)` : `🚑 ${code}`}
+          ${isTaken ? `🚫 ${code} (使用中)` : `🚑 ${code}`}
         </option>`;
       }
       html += '</optgroup>';
@@ -2027,8 +2059,14 @@
     }
 
     function listenToDispatches() {
-      db.ref(`${DB_ROOT}/dispatches`).limitToLast(20).on('value', (snapshot) => {
+      db.ref(`${DB_ROOT}/dispatches`).limitToLast(40).on('value', (snapshot) => {
         allDispatchesData = snapshot.val() || {};
+
+        if (isSystemStarted && isAdminRole()) {
+          renderCasesOnMapAndSidebar();
+          renderUnitsOnMapAndSidebar();
+        }
+
         if (!isSystemStarted || selectedRole !== 'rider' || !currentUser) return;
 
         let newestMatch = null;
@@ -3885,6 +3923,7 @@
       const container = document.getElementById('casesListContainer');
       const allEntries = Object.entries(allCasesData);
       const activeEntries = allEntries.filter(([, c]) => c && c.status === 'ACTIVE');
+      const noResponseList = isAdminRole() ? getNoResponseDispatches(Date.now()) : [];
 
       document.getElementById('activeCaseCount').textContent = activeEntries.length;
 
@@ -3956,6 +3995,9 @@
         const assignedNames = Object.values(c.assignedUnits || {});
         const timelineArr = Object.values(c.timeline || {}).sort((a, b) => (a.ts || 0) - (b.ts || 0));
         const triageObj = (c.triageLevel && TRIAGE_META[c.triageLevel]) ? TRIAGE_META[c.triageLevel] : null;
+        const caseNoResponse = isActive
+          ? noResponseList.filter(d => d.caseId === id)
+          : [];
 
         const timelineHtml = timelineArr.map(ev => `
           <div class="text-[11px] text-slate-300 border-l-2 border-slate-600 pl-2 py-0.5">
@@ -3975,6 +4017,13 @@
           statusBadgeHtml = '<span class="text-[11px] font-bold text-emerald-400">✔ 已結案</span>';
         }
 
+        const noResponseBannerHtml = caseNoResponse.length > 0
+          ? `<div class="mb-2 px-2.5 py-1.5 rounded-lg bg-amber-950/85 border border-amber-500/80 text-[11px] font-bold text-amber-200 flex flex-wrap items-center gap-1.5">
+              <span>⚠️ 派遣無回應：</span>
+              ${caseNoResponse.map(d => `<span>${escapeHtml(d.targetName || '指派單位')} (${d.elapsedSec}s)</span>`).join('、')}
+            </div>`
+          : '';
+
         const bibBadgeHtml = c.patientBib
           ? `<span class="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-500/70 text-amber-200 font-mono font-bold text-[10px]">🏷️ #${escapeHtml(c.patientBib)}</span>`
           : '';
@@ -3991,7 +4040,9 @@
           : '';
 
         const card = document.createElement('div');
-        const activeBorder = triageObj ? triageObj.borderClass : 'border-red-500/70';
+        const activeBorder = caseNoResponse.length > 0
+          ? 'border-amber-400'
+          : (triageObj ? triageObj.borderClass : 'border-red-500/70');
         card.className = isActive
           ? `p-3 rounded-xl bg-slate-800/95 border-2 ${activeBorder} shadow-lg`
           : 'p-3 rounded-xl bg-slate-800/50 border border-slate-700/80 opacity-85';
@@ -4011,6 +4062,7 @@
 
           <div class="text-xs font-bold text-white mb-1.5">${escapeHtml(c.summary || '未填寫摘要')}</div>
 
+          ${noResponseBannerHtml}
           ${transportBadgeHtml}
 
           <div class="flex flex-wrap gap-1 mb-2">
@@ -4078,6 +4130,9 @@
       const now = Date.now();
       const canDispatch = isAdminRole();
       const superMode = isSuperAdmin();
+      const noResponseUids = new Set(
+        canDispatch ? getNoResponseDispatches(now).map(d => d.targetUid).filter(Boolean) : []
+      );
 
       const riders = Object.values(allUnitsData).filter(u => u && u.role === 'rider');
       const onlineRiders = riders.filter(u => {
@@ -4116,14 +4171,14 @@
 
       riders.forEach(u => {
         const isOnline = !u.isOffline && (isAmbulanceCallsign(u.callsign) || !u.updatedAt || (now - u.updatedAt) < STALE_UNIT_MS);
+        const isNoResponse = canDispatch && isOnline && noResponseUids.has(u.uid);
         const meta = STATUS_META[u.status] || STATUS_META.STANDBY;
-        const badgeClass = isOnline ? meta.class : 'status-offline';
-        const statusText = isOnline ? meta.label : '⚫ 已離線/斷訊';
+        const badgeClass = isOnline ? (isNoResponse ? 'bg-amber-600' : meta.class) : 'status-offline';
+        const statusText = isOnline ? (isNoResponse ? '⚠️ 派遣無回應' : meta.label) : '⚫ 已離線/斷訊';
         const timeStr = u.updatedAt ? formatTime(u.updatedAt) : '--:--:--';
         const unitCase = (u.activeCaseId && allCasesData[u.activeCaseId]?.status === 'ACTIVE') ? allCasesData[u.activeCaseId] : null;
         const unitCaseCode = unitCase ? unitCase.caseCode : '';
         const devCode = u.deviceCode || (u.uid ? u.uid.slice(0, 6) : '------');
-        const isAmb = isAmbulanceCallsign(u.callsign);
 
         const isSelf = Boolean(currentUser && u.uid === currentUser.uid);
         const isCoAssignedForRider = !canDispatch && Boolean(activeCaseId && u.activeCaseId === activeCaseId && allCasesData[activeCaseId]?.status === 'ACTIVE');
@@ -4151,7 +4206,7 @@
             <div style="color:#0f172a; min-width:170px;">
               <div style="font-weight:800; font-size:14px;">${escapeHtml(u.name)}</div>
               <div style="font-size:11px; color:#64748b; font-family:monospace;">裝置碼：${escapeHtml(devCode)}</div>
-              <div style="font-size:12px; margin-top:2px;">狀態：<strong>${meta.short}</strong> ${unitCaseCode ? `(${escapeHtml(unitCaseCode)})` : ''}</div>
+              <div style="font-size:12px; margin-top:2px;">狀態：<strong>${isNoResponse ? '派遣無回應' : meta.short}</strong> ${unitCaseCode ? `(${escapeHtml(unitCaseCode)})` : ''}</div>
               <div style="font-size:12px; color:#475569; margin-top:4px;">${escapeHtml(u.note || '無備註')}</div>
               ${dispatchButtonHtml}
             </div>
@@ -4172,13 +4227,16 @@
 
         const safeUnitNameArg = escapeJsSingleQuote(u.name || '');
         const card = document.createElement('div');
-        card.className = `p-3 rounded-xl border ${isOnline ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-900/60 border-slate-800 opacity-65'}`;
+        card.className = `p-3 rounded-xl border ${
+          isNoResponse
+            ? 'bg-amber-950/35 border-amber-500/80'
+            : (isOnline ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-900/60 border-slate-800 opacity-65')
+        }`;
         card.innerHTML = `
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1.5 min-w-0">
               <span class="font-bold text-white text-sm truncate">${escapeHtml(u.name)}</span>
               <span class="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-[10px] font-mono text-slate-400 shrink-0" title="裝置識別碼">ID:${escapeHtml(devCode)}</span>
-              ${isAmb && isOnline ? `<span class="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-600/60 text-[10px] text-amber-300 shrink-0">🔒 鎖定中</span>` : ''}
               ${unitCaseCode ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-yellow-200 font-black text-[10px] shrink-0">${escapeHtml(unitCaseCode)}</span>` : ''}
             </div>
             <span class="px-2 py-0.5 rounded-full text-[11px] font-bold text-white shrink-0 ${badgeClass}">
@@ -4393,6 +4451,7 @@
       document.getElementById('inputPersonName').value = savedPersonName;
       selectRole(selectedRole);
       updateOfflineQueueBadge();
+      startNoResponseTicker();
       initMap();
       initFirebase();
     });
