@@ -62,12 +62,15 @@
       height: 26px;
     }
 
-    /* 案件事故點標記 */
+/* 案件事故點標記 */
     .case-pin-wrapper {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
+      width: max-content;
       transform: translate(-50%, -100%);
+      pointer-events: auto;
     }
     .case-pin-badge {
       background-color: #b91c1c;
@@ -83,15 +86,18 @@
     }
     .case-pin-icon {
       font-size: 28px;
+      line-height: 1;
       filter: drop-shadow(0 3px 5px rgba(0,0,0,0.9));
       animation: bounce-pin 0.9s infinite alternate;
     }
 
     /* 派遣預選可拖曳大頭針標記 */
     .draft-pin-wrapper {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
+      width: max-content;
       transform: translate(-50%, -100%);
       cursor: grab;
     }
@@ -109,6 +115,7 @@
     }
     .draft-pin-icon {
       font-size: 32px;
+      line-height: 1;
       filter: drop-shadow(0 4px 8px rgba(0,0,0,0.95));
     }
 
@@ -2757,11 +2764,11 @@
           <div class="draft-pin-icon">📌</div>
         </div>
       `;
-      const customIcon = L.divIcon({
+const customIcon = L.divIcon({
         html: iconHtml,
         className: '',
-        iconSize: [110, 56],
-        iconAnchor: [55, 56]
+        iconSize: [0, 0],
+        iconAnchor: [-8, 3]
       });
 
       if (draftDispatchMarker) {
@@ -3357,11 +3364,11 @@
           </div>
         `;
 
-        const customIcon = L.divIcon({
+const customIcon = L.divIcon({
           html: iconHtml,
           className: '',
-          iconSize: [140, 52],
-          iconAnchor: [70, 52]
+          iconSize: [0, 0],
+          iconAnchor: [-7, 2]
         });
 
         const popupHtml = `
