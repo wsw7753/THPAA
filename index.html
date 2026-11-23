@@ -129,6 +129,8 @@
       animation: pulse-red 1.2s infinite;
     }
     .status-arrived { background-color: #3b82f6; }
+    .status-transporting { background-color: #0891b2; }
+    .status-hospital { background-color: #4f46e5; }
     .status-offline { background-color: #64748b; opacity: 0.8; }
 
     @keyframes pulse-red {
@@ -175,7 +177,7 @@
               class="role-btn p-4 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-left transition">
               <div class="text-2xl mb-1">🏍️</div>
               <div class="font-bold text-white">一般用戶</div>
-              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站</div>
+              <div class="text-xs text-slate-300 mt-0.5">機巡/救護車/救護站2~5</div>
             </button>
             <button type="button" id="btnSelectDispatch" onclick="selectRole('dispatch')"
               class="role-btn p-4 rounded-xl border-2 border-slate-700 bg-slate-800/60 text-left transition hover:border-slate-500">
@@ -326,27 +328,46 @@
         <!-- 兩大核心按鈕：出勤 / 到達 -->
         <div class="grid grid-cols-2 gap-3">
           <button id="btnActionDispatch" onclick="openReportModal('DISPATCHED')"
-            class="py-3.5 px-3 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-red-950/50 flex flex-col items-center justify-center transition">
+            class="py-3 px-3 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-red-950/50 flex flex-col items-center justify-center transition">
             <span>🚨 出勤</span>
             <span class="text-xs font-normal text-red-100 mt-0.5">接案 / 主動發現事故</span>
           </button>
 
           <button id="btnActionArrive" onclick="openReportModal('ARRIVED')"
-            class="py-3.5 px-3 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-blue-950/50 flex flex-col items-center justify-center transition">
+            class="py-3 px-3 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-black text-lg shadow-lg shadow-blue-950/50 flex flex-col items-center justify-center transition">
             <span>🏥 到達</span>
             <span class="text-xs font-normal text-blue-100 mt-0.5">抵達現場 / 接觸傷患</span>
           </button>
         </div>
 
-        <!-- 進行中任務輔助按鈕：標定目前位置為事故點 / 結案恢復待命 -->
-        <div id="riderActiveActionsRow" class="hidden grid grid-cols-2 gap-2.5 mt-2.5">
+        <!-- 救護車專屬雙按鈕：送醫 / 到院 -->
+        <div id="ambulanceExtraButtonsRow" class="hidden grid grid-cols-2 gap-3 mt-2.5">
+          <button type="button" onclick="openReportModal('TRANSPORTING')"
+            class="py-3 px-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] text-white font-black text-base shadow-lg shadow-cyan-950/50 flex flex-col items-center justify-center transition">
+            <span>🚑 送醫</span>
+            <span class="text-[11px] font-normal text-cyan-100 mt-0.5">離開現場後送醫院/總站</span>
+          </button>
+
+          <button type="button" onclick="openReportModal('AT_HOSPITAL')"
+            class="py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-black text-base shadow-lg shadow-indigo-950/50 flex flex-col items-center justify-center transition">
+            <span>🏥 到院</span>
+            <span class="text-[11px] font-normal text-indigo-100 mt-0.5">抵達醫院急診交接傷患</span>
+          </button>
+        </div>
+
+        <!-- 進行中任務輔助按鈕：回報現場狀況 / 標定事故點 / 結案恢復待命 -->
+        <div id="riderActiveActionsRow" class="hidden grid grid-cols-3 gap-2 mt-2.5">
+          <button type="button" onclick="openReportModal('STATUS_UPDATE')"
+            class="py-2.5 px-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.98] text-white font-bold text-xs shadow transition">
+            📋 回報狀況
+          </button>
           <button type="button" onclick="pinCurrentLocationToActiveCase()"
-            class="py-2.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow transition">
-            📍 標定目前位置為事故點
+            class="py-2.5 px-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold text-xs shadow transition">
+            📍 標定事故點
           </button>
           <button id="btnActionStandby" type="button" onclick="openReportModal('STANDBY')"
-            class="py-2.5 px-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 active:scale-[0.98] text-white font-bold text-xs sm:text-sm transition">
-            ✅ 任務結案恢復待命
+            class="py-2.5 px-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 active:scale-[0.98] text-white font-bold text-xs transition">
+            ✅ 結案待命
           </button>
         </div>
       </div>
@@ -591,7 +612,7 @@
     </div>
   </div>
 
-  <!-- ==================== 6. 管理員：無線電代記補述案件狀況對話框 ==================== -->
+  <!-- ==================== 6. 管理員：無線電代記補述 / 代點救護車送醫到院對話框 ==================== -->
   <div id="radioNoteModal" class="hidden fixed inset-0 z-[2620] bg-black/80 flex items-end sm:items-center justify-center p-3">
     <div class="bg-slate-900 border border-purple-500/70 rounded-2xl max-w-md w-full p-5 shadow-2xl max-h-[92dvh] overflow-y-auto">
       <div class="flex items-center justify-between mb-2">
@@ -608,48 +629,99 @@
       </div>
 
       <div class="mb-3">
-        <label class="block text-xs font-semibold text-slate-300 mb-1">2. 代記進度階段：</label>
-        <select id="radioActionSelect"
+        <label class="block text-xs font-semibold text-slate-300 mb-1">2. 代記進度階段（含救護車送醫／到院）：</label>
+        <select id="radioActionSelect" onchange="onRadioActionChange()"
           class="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold focus:outline-none focus:border-purple-400">
-          <option value="🎙️ 無線電回報現場狀況">🎙️ 無線電回報現場狀況（純補述）</option>
-          <option value="🏥 無線電代記：已到達現場">🏥 無線電代記：已到達現場</option>
-          <option value="🩺 無線電代記：傷患評估/包紮處置中">🩺 無線電代記：傷患評估/包紮處置中</option>
-          <option value="🚑 無線電代記：請求救護車後送">🚑 無線電代記：請求救護車後送</option>
-          <option value="🏃 無線電代記：處置完畢選手續跑">🏃 無線電代記：處置完畢選手續跑</option>
+          <option value="NOTE">🎙️ 無線電回報現場狀況（純補述）</option>
+          <option value="ARRIVED">🏥 無線電代記：已到達現場</option>
+          <option value="TREATING">🩺 無線電代記：傷患評估/包紮處置中</option>
+          <option value="TRANSPORTING">🚑 無線電代記：救護車送醫出發</option>
+          <option value="AT_HOSPITAL">🏥 無線電代記：救護車抵達醫院</option>
+          <option value="TRANSPORT_BOTH">🚑🏥 無線電補登：送醫 ＋ 抵達醫院（雙時間紀錄）</option>
+          <option value="CONTINUED">🏃 無線電代記：處置完畢選手續跑</option>
         </select>
       </div>
 
+      <!-- 救護車送醫 / 抵達醫院專屬區塊（支援雙時間記錄與醫院快選） -->
+      <div id="radioTransportDetailsBox" class="hidden mb-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2.5">
+        <div>
+          <label class="block text-xs font-semibold text-cyan-300 mb-1">🏥 後送醫院 / 後送總站：</label>
+          <div class="flex flex-wrap gap-1.5 mb-1.5">
+            <button type="button" onclick="document.getElementById('radioTransportDest').value='成大醫院'"
+              class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 成大醫院</button>
+            <button type="button" onclick="document.getElementById('radioTransportDest').value='奇美醫院'"
+              class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 奇美醫院</button>
+            <button type="button" onclick="document.getElementById('radioTransportDest').value='救護總站'"
+              class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600">+ 救護總站</button>
+          </div>
+          <input type="text" id="radioTransportDest" placeholder="輸入醫院名稱（例：成大醫院、部立醫院）"
+            class="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-cyan-400" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div id="radioDepartTimeGroup">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-semibold text-cyan-200">🚑 送醫時間：</label>
+              <button type="button" onclick="fillRadioTimeNow('radioDepartTime')" class="text-[10px] text-amber-300 hover:underline">帶入現在</button>
+            </div>
+            <input type="time" step="1" id="radioDepartTime"
+              class="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs font-mono" />
+          </div>
+          <div id="radioHospitalTimeGroup">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-semibold text-indigo-200">🏥 抵達醫院時間：</label>
+              <button type="button" onclick="fillRadioTimeNow('radioHospitalTime')" class="text-[10px] text-amber-300 hover:underline">帶入現在</button>
+            </div>
+            <input type="time" step="1" id="radioHospitalTime"
+              class="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs font-mono" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 簡單患者狀況快選 -->
       <div class="mb-3">
-        <label class="block text-xs font-semibold text-slate-300 mb-1.5">3. 快捷無線電抄收內容：</label>
+        <label class="block text-xs font-semibold text-emerald-300 mb-1.5">3. 簡單患者狀況快選（點擊累加）：</label>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" onclick="appendRadioNote('意識清醒、生命徵象穩定')"
-            class="px-2 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
-            + 意識清醒生命徵象穩定
+            class="px-2 py-1 rounded-lg text-xs bg-emerald-950/60 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/60">
+            + 意識清醒穩定
           </button>
-          <button type="button" onclick="appendRadioNote('肌肉抽筋噴劑伸展處置中')"
+          <button type="button" onclick="appendRadioNote('頭暈無力/疑似低血糖')"
             class="px-2 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
-            + 抽筋噴劑處置中
+            + 頭暈/低血糖
           </button>
-          <button type="button" onclick="appendRadioNote('擦傷清洗包紮完畢')"
+          <button type="button" onclick="appendRadioNote('肌肉抽筋/噴劑伸展處置')"
             class="px-2 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
-            + 擦傷包紮完畢
+            + 肌肉抽筋
           </button>
-          <button type="button" onclick="appendRadioNote('已上救護車準備後送醫院')"
+          <button type="button" onclick="appendRadioNote('疑似熱衰竭/體溫偏高降溫中')"
+            class="px-2 py-1 rounded-lg text-xs bg-amber-950/60 hover:bg-amber-900 text-amber-200 border border-amber-700/60">
+            + 熱衰竭/體溫高
+          </button>
+          <button type="button" onclick="appendRadioNote('肢體擦挫傷/清洗包紮')"
             class="px-2 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600">
-            + 已上救護車後送
+            + 肢體擦挫傷
+          </button>
+          <button type="button" onclick="appendRadioNote('胸悶喘促/呼吸急促')"
+            class="px-2 py-1 rounded-lg text-xs bg-rose-950/60 hover:bg-rose-900 text-rose-200 border border-rose-700/60">
+            + 胸悶喘促
+          </button>
+          <button type="button" onclick="appendRadioNote('意識不清/急需後送')"
+            class="px-2 py-1 rounded-lg text-xs bg-red-950/70 hover:bg-red-900 text-red-200 border border-red-600/70">
+            + 意識不清危急
           </button>
         </div>
       </div>
 
       <div class="mb-3">
-        <label class="block text-xs font-semibold text-slate-300 mb-1">4. 補充詳細內容：</label>
-        <textarea id="radioNoteTextarea" rows="2" placeholder="輸入無線電抄收的跑者號碼布、傷勢或處置細節..."
+        <label class="block text-xs font-semibold text-slate-300 mb-1">4. 補充詳細內容（號碼布 / 處置細節）：</label>
+        <textarea id="radioNoteTextarea" rows="2" placeholder="輸入無線電抄收的跑者號碼布、傷勢或交接細節..."
           class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:border-purple-400 text-sm"></textarea>
       </div>
 
       <label class="flex items-center gap-2 text-xs text-slate-300 mb-4 bg-slate-800/70 p-2.5 rounded-xl border border-slate-700 cursor-pointer">
-        <input type="checkbox" id="chkSyncUnitArrived" class="w-4 h-4 accent-purple-500" />
-        <span>同時將該單位在地圖上的狀態更新為「🏥 到達現場」</span>
+        <input type="checkbox" id="chkSyncUnitStatus" checked class="w-4 h-4 accent-purple-500" />
+        <span>同步更新該單位在地圖上的執勤狀態（到達 / 後送中 / 已到院）</span>
       </label>
 
       <div class="grid grid-cols-2 gap-3">
@@ -782,7 +854,7 @@
       <!-- 步驟 1：匯出報表 -->
       <div class="p-3.5 rounded-xl bg-slate-800/90 border border-emerald-500/50 mb-4">
         <div class="text-xs font-bold text-emerald-400 mb-1">步驟 1：下載本場賽事完整勤務報表（Excel CSV）</div>
-        <div class="text-[11px] text-slate-400 mb-2.5">包含案件編號、發生時間、後送醫院/總站、經緯度、出勤單位、時間軸與裝置碼稽核紀錄。</div>
+        <div class="text-[11px] text-slate-400 mb-2.5">包含案件編號、發生時間、後送醫院/總站、送醫/到院時間、經緯度、出勤單位與時間軸明細。</div>
         <button type="button" onclick="exportCasesCSV()"
           class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow flex items-center justify-center gap-2">
           <span>📥 立即匯出案件追蹤總表 (.csv)</span>
@@ -870,9 +942,9 @@
     };
 
     const DB_ROOT = 'marathon_ems_tracker';
-    // 總站派案專員密碼 SHA-256（可派案/結案/合併/補述/標站/匯出；不可清空/改門禁/踢除）
+    // 總站派案專員密碼 SHA-256
     const DISPATCH_PASSWORD_SHA256 = 'b9ffefbd453c67e0079a70cc747945ca732c03b969646e052162b1735eeb188e';
-    // 最高權限管理員密碼 SHA-256（完整權限）
+    // 最高權限管理員密碼 SHA-256
     const SUPER_ADMIN_PASSWORD_SHA256 = 'aedc4fb66e766a8b16c05f3d90fc590bae3468792f274985bf7c33c2567709fc';
     const STALE_UNIT_MS = 120000;
 
@@ -893,7 +965,7 @@
     let db = null;
     let currentUser = null;
     let selectedRole = localStorage.getItem('ems_role') || 'rider';
-    let adminTier = 'NONE'; // 'NONE' | 'DISPATCHER' | 'SUPER'
+    let adminTier = 'NONE';
     let savedCallsign = localStorage.getItem('ems_callsign') || '機巡01';
     let savedPersonName = localStorage.getItem('ems_person_name') || '';
     let unitName = '';
@@ -917,13 +989,11 @@
       passcodeVersion: 0
     };
 
-    // 音效與派遣通知
     let audioCtx = null;
     let alertRepeatTimer = null;
     let latestDispatchObj = null;
     let lastHandledDispatchId = localStorage.getItem('ems_last_dispatch_id') || '';
 
-    // 地圖選點與標記圖層
     let mapPickPurpose = null;
     let selectedDispatchCoords = null;
     let adminDraftPinMarker = null;
@@ -947,9 +1017,12 @@
     let caseFilterMode = 'ACTIVE';
 
     const STATUS_META = {
-      STANDBY:    { label: '🟢 待命巡邏', short: '待命', class: 'status-standby',    btnColor: 'bg-emerald-600 hover:bg-emerald-500' },
-      DISPATCHED: { label: '🚨 出勤趕赴', short: '出勤', class: 'status-dispatched', btnColor: 'bg-red-600 hover:bg-red-500' },
-      ARRIVED:    { label: '🏥 到達現場', short: '到達', class: 'status-arrived',    btnColor: 'bg-blue-600 hover:bg-blue-500' }
+      STANDBY:       { label: '🟢 待命巡邏', short: '待命',   class: 'status-standby',      btnColor: 'bg-emerald-600 hover:bg-emerald-500' },
+      DISPATCHED:    { label: '🚨 出勤趕赴', short: '出勤',   class: 'status-dispatched',   btnColor: 'bg-red-600 hover:bg-red-500' },
+      ARRIVED:       { label: '🏥 到達現場', short: '到達',   class: 'status-arrived',      btnColor: 'bg-blue-600 hover:bg-blue-500' },
+      TRANSPORTING:  { label: '🚑 後送醫院', short: '送醫中', class: 'status-transporting', btnColor: 'bg-cyan-600 hover:bg-cyan-500' },
+      AT_HOSPITAL:   { label: '🏥 抵達醫院', short: '已到院', class: 'status-hospital',     btnColor: 'bg-indigo-600 hover:bg-indigo-500' },
+      STATUS_UPDATE: { label: '📋 回報現場狀況', short: '回報', class: 'status-arrived',    btnColor: 'bg-purple-600 hover:bg-purple-500' }
     };
 
     const POI_META = {
@@ -961,9 +1034,12 @@
     };
 
     const QUICK_TAGS = {
-      DISPATCHED: ['接獲總站派遣出勤', '巡邏發現選手倒地', '前往賽道折返點', '支援前方救護組', '攜帶AED前往'],
-      ARRIVED:    ['已接觸選手評估中', '肌肉抽筋/噴劑處置', '擦挫傷/簡易包紮', '疑似熱衰竭/降溫中', '意識不清/請求救護車後送'],
-      STANDBY:    ['處置完畢選手續跑', '已交接救護車後送', '選手棄賽已上收容車', '誤觸恢復待命']
+      DISPATCHED:    ['接獲總站派遣出勤', '巡邏發現選手倒地', '前往賽道折返點', '支援前方救護組', '攜帶AED前往'],
+      ARRIVED:       ['已接觸選手評估中', '肌肉抽筋/噴劑處置', '擦挫傷/簡易包紮', '疑似熱衰竭/降溫中', '意識不清/請求救護車後送'],
+      STATUS_UPDATE: ['意識清醒、生命徵象穩定', '肌肉抽筋/噴劑伸展處置中', '擦挫傷清洗包紮中', '疑似熱衰竭/補水降溫中', '需救護車支援後送', '處置穩定觀察中'],
+      TRANSPORTING:  ['傷患已上救護車準備後送', '意識清醒生命徵象穩定後送中', '意識不清緊急鳴笛後送', '由機巡交接上車後送'],
+      AT_HOSPITAL:   ['已抵達醫院急診室', '已完成醫院檢傷交接', '準備返隊恢復待命'],
+      STANDBY:       ['處置完畢選手續跑', '已交接救護車後送', '已交接醫院急診返隊', '選手棄賽已上收容車', '誤觸恢復待命']
     };
 
     function isSuperAdmin() {
@@ -977,9 +1053,7 @@
         if (!u || !u.callsign) return;
         if (currentUser && u.uid === currentUser.uid) return;
         const isAlive = !u.isOffline && (!u.updatedAt || (now - u.updatedAt) < STALE_UNIT_MS);
-        if (isAlive) {
-          occupied.add(u.callsign);
-        }
+        if (isAlive) occupied.add(u.callsign);
       });
       return occupied;
     }
@@ -989,7 +1063,7 @@
     }
 
     // =========================================================================
-    // 3. 初始化下拉選單（機巡01~15、救護車91~95、第2~第5救護站）並鎖定已佔用
+    // 3. 初始化下拉選單（機巡01~15、救護車91~95、第2~第5救護站）
     // =========================================================================
     function populateCallsignDropdown() {
       const sel = document.getElementById('selectVehicleCallsign');
@@ -1543,6 +1617,9 @@
         document.getElementById('btnTestAlert').classList.remove('hidden');
         document.getElementById('riderControlPanel').classList.remove('hidden');
         document.getElementById('dispatchDashboard').classList.add('hidden');
+
+        // 救護車專屬雙按鈕顯示控制
+        document.getElementById('ambulanceExtraButtonsRow').classList.toggle('hidden', vehicleType !== 'AMBULANCE');
         removeAdminDraftPin();
 
         const snap = await db.ref(`${DB_ROOT}/units/${currentUser.uid}`).once('value');
@@ -1714,7 +1791,7 @@
     }
 
     // =========================================================================
-    // 9. 案件編號產生與獨立時間軸引擎（隱性記錄操作裝置碼 deviceCode）
+    // 9. 案件編號產生與獨立時間軸引擎
     // =========================================================================
     async function generateNextCaseCode() {
       const counterRef = db.ref(`${DB_ROOT}/caseCounter`);
@@ -1736,7 +1813,7 @@
     }
 
     // =========================================================================
-    // 10. 一般用戶：狀態回報、後送醫院/總站自填、補標事故點與時間軸更新
+    // 10. 一般用戶：狀態回報、現場狀況補述、救護車「送醫 / 到院」與時間軸更新
     // =========================================================================
     function setTransportInput(val) {
       document.getElementById('inputAmbulanceDestination').value = val;
@@ -1747,6 +1824,12 @@
     }
 
     function openReportModal(targetStatus) {
+      const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
+      if (targetStatus === 'STATUS_UPDATE' && (!curCase || curCase.status !== 'ACTIVE')) {
+        alert('⚠️ 目前尚未綁定進行中案件，請先點選「🚨 出勤」或「🏥 到達」立案後再回報現場狀況！');
+        return;
+      }
+
       pendingActionStatus = targetStatus;
       const modal = document.getElementById('reportModal');
       const titleEl = document.getElementById('reportModalTitle');
@@ -1758,7 +1841,6 @@
       const ambDestInput = document.getElementById('inputAmbulanceDestination');
 
       noteInput.value = '';
-      const curCase = activeCaseId ? allCasesData[activeCaseId] : null;
 
       if (vehicleType === 'AMBULANCE') {
         ambGroup.classList.remove('hidden');
@@ -1769,10 +1851,10 @@
       }
 
       const meta = STATUS_META[targetStatus];
-      titleEl.textContent = `回報狀態：${meta.label}`;
+      titleEl.textContent = targetStatus === 'STATUS_UPDATE' ? '📋 回報現場狀況' : `回報狀態：${meta.label}`;
       confirmBtn.className = `py-3 rounded-xl text-white font-bold text-sm shadow-lg ${meta.btnColor}`;
       confirmBtn.disabled = false;
-      confirmBtn.textContent = '確認送出回報';
+      confirmBtn.textContent = targetStatus === 'STATUS_UPDATE' ? '送出狀況回報' : '確認送出回報';
 
       if (targetStatus === 'DISPATCHED') {
         hintEl.textContent = curCase && curCase.status === 'ACTIVE'
@@ -1782,6 +1864,16 @@
         hintEl.textContent = curCase && curCase.status === 'ACTIVE'
           ? `🏥 將記錄到達現場時間至案件 ${curCase.caseCode}`
           : `🆕 尚無案件編號，系統將自動建立新案件並記錄到場時間`;
+      } else if (targetStatus === 'STATUS_UPDATE') {
+        hintEl.textContent = `📋 維持目前「${(STATUS_META[currentStatus] || STATUS_META.ARRIVED).short}」狀態，將現場評估與處置寫入案件 ${curCase.caseCode} 時間軸`;
+      } else if (targetStatus === 'TRANSPORTING') {
+        hintEl.textContent = curCase && curCase.status === 'ACTIVE'
+          ? `🚑 將記錄救護車「送醫出發時間」至案件 ${curCase.caseCode}（建議下方填寫後送醫院/總站）`
+          : `🆕 尚無案件編號，系統將自動建立新案件並記錄「送醫出發時間」`;
+      } else if (targetStatus === 'AT_HOSPITAL') {
+        hintEl.textContent = curCase && curCase.status === 'ACTIVE'
+          ? `🏥 將記錄救護車「抵達醫院時間」至案件 ${curCase.caseCode}（交接完畢後請按「結案待命」）`
+          : `🆕 尚無案件編號，系統將自動建立新案件並記錄「抵達醫院時間」`;
       } else {
         hintEl.textContent = curCase && curCase.status === 'ACTIVE'
           ? `✅ 送出後將把案件 ${curCase.caseCode} 標記為「已結案」，並清除事故紅點`
@@ -1833,50 +1925,72 @@
     }
 
     async function applyRiderStatusChange(newStatus, note, transportDest = '') {
-      currentStatus = newStatus;
+      const isPureStatusUpdate = newStatus === 'STATUS_UPDATE';
+      if (!isPureStatusUpdate) {
+        currentStatus = newStatus;
+      }
+
       const nowMs = Date.now();
+      const nowTimeStr = formatTime(nowMs);
       let targetCaseId = activeCaseId;
       const devCode = getShortDeviceCode();
       const fullNote = transportDest
         ? (note ? `${note}（後送：${transportDest}）` : `後送至：${transportDest}`)
         : note;
 
-      if ((newStatus === 'DISPATCHED' || newStatus === 'ARRIVED') && (!targetCaseId || !allCasesData[targetCaseId] || allCasesData[targetCaseId].status === 'CLOSED' || allCasesData[targetCaseId].status === 'MERGED')) {
+      const canAutoCreateCase = ['DISPATCHED', 'ARRIVED', 'TRANSPORTING', 'AT_HOSPITAL'].includes(newStatus);
+
+      if (canAutoCreateCase && (!targetCaseId || !allCasesData[targetCaseId] || allCasesData[targetCaseId].status === 'CLOSED' || allCasesData[targetCaseId].status === 'MERGED')) {
         const caseCode = await generateNextCaseCode();
         const newCaseRef = db.ref(`${DB_ROOT}/cases`).push();
         targetCaseId = newCaseRef.key;
         activeCaseId = targetCaseId;
 
-        await newCaseRef.set({
+        const casePayload = {
           caseId: targetCaseId,
           caseCode: caseCode,
           status: 'ACTIVE',
           source: 'RIDER_SELF',
           creatorDeviceCode: devCode,
-          summary: fullNote || `${unitName} 巡邏發現事故出勤`,
+          summary: fullNote || `${unitName} 主動回報出勤`,
           transportDestination: transportDest || '',
           lat: myCoords ? myCoords.lat : null,
           lng: myCoords ? myCoords.lng : null,
           assignedUnits: { [currentUser.uid]: unitName },
           assignedDevices: { [currentUser.uid]: `${unitName}[${devCode}]` },
           createdAt: firebase.database.ServerValue.TIMESTAMP
-        });
+        };
+        if (newStatus === 'TRANSPORTING') casePayload.transportDepartTime = nowTimeStr;
+        if (newStatus === 'AT_HOSPITAL') casePayload.hospitalArriveTime = nowTimeStr;
 
-        await appendCaseTimeline(
-          targetCaseId,
-          unitName,
-          newStatus === 'DISPATCHED' ? '🚨 主動立案並出勤' : '🏥 主動立案並到達現場',
-          fullNote,
-          devCode
-        );
+        await newCaseRef.set(casePayload);
+
+        const initActionMap = {
+          DISPATCHED:   '🚨 主動立案並出勤',
+          ARRIVED:      '🏥 主動立案並到達現場',
+          TRANSPORTING: `🚑 主動立案並送醫出發 (${nowTimeStr})`,
+          AT_HOSPITAL:  `🏥 主動立案並抵達醫院 (${nowTimeStr})`
+        };
+        await appendCaseTimeline(targetCaseId, unitName, initActionMap[newStatus] || '🚨 主動立案', fullNote, devCode);
       } else if (targetCaseId && allCasesData[targetCaseId]) {
-        if (transportDest) {
-          await db.ref(`${DB_ROOT}/cases/${targetCaseId}/transportDestination`).set(transportDest);
+        const caseUpdates = {};
+        if (transportDest) caseUpdates.transportDestination = transportDest;
+        if (newStatus === 'TRANSPORTING') caseUpdates.transportDepartTime = nowTimeStr;
+        if (newStatus === 'AT_HOSPITAL') caseUpdates.hospitalArriveTime = nowTimeStr;
+        if (Object.keys(caseUpdates).length > 0) {
+          await db.ref(`${DB_ROOT}/cases/${targetCaseId}`).update(caseUpdates);
         }
-        if (newStatus === 'DISPATCHED') {
+
+        if (isPureStatusUpdate) {
+          await appendCaseTimeline(targetCaseId, unitName, '📋 回報現場狀況', fullNote || '現場狀況更新', devCode);
+        } else if (newStatus === 'DISPATCHED') {
           await appendCaseTimeline(targetCaseId, unitName, '🚨 確認出勤前往', fullNote, devCode);
         } else if (newStatus === 'ARRIVED') {
           await appendCaseTimeline(targetCaseId, unitName, '🏥 抵達事故現場', fullNote, devCode);
+        } else if (newStatus === 'TRANSPORTING') {
+          await appendCaseTimeline(targetCaseId, unitName, `🚑 救護車送醫出發 (${nowTimeStr})`, fullNote, devCode);
+        } else if (newStatus === 'AT_HOSPITAL') {
+          await appendCaseTimeline(targetCaseId, unitName, `🏥 救護車抵達醫院 (${nowTimeStr})`, fullNote, devCode);
         } else if (newStatus === 'STANDBY') {
           await appendCaseTimeline(targetCaseId, unitName, '✅ 任務完成並結案', fullNote, devCode);
           await db.ref(`${DB_ROOT}/cases/${targetCaseId}`).update({
@@ -1888,6 +2002,7 @@
         }
       }
 
+      const statusShortText = (STATUS_META[currentStatus] || STATUS_META.STANDBY).short;
       const updatePayload = {
         uid: currentUser.uid,
         deviceCode: devCode,
@@ -1895,7 +2010,7 @@
         name: unitName,
         status: currentStatus,
         activeCaseId: activeCaseId || null,
-        lastNote: fullNote || `回報${STATUS_META[currentStatus].short}`,
+        lastNote: fullNote || `回報${statusShortText}`,
         lastActionTime: nowMs,
         updatedAt: firebase.database.ServerValue.TIMESTAMP,
         isOffline: false
@@ -1918,7 +2033,8 @@
       document.getElementById('riderLastTime').textContent = formatTime(timestampMs);
 
       const activeRow = document.getElementById('riderActiveActionsRow');
-      if (status === 'DISPATCHED' || status === 'ARRIVED') {
+      const hasActiveTask = ['DISPATCHED', 'ARRIVED', 'TRANSPORTING', 'AT_HOSPITAL'].includes(status) || !!activeCaseId;
+      if (hasActiveTask) {
         activeRow.classList.remove('hidden');
       } else {
         activeRow.classList.add('hidden');
@@ -2001,7 +2117,7 @@
     }
 
     // =========================================================================
-    // 11. 管理員派案、同案派遣（含已結案重啟）、支援增派、後送填寫 & 無線電代記補述
+    // 11. 管理員派案、同案派遣、支援增派 & 無線電代記（含救護車送醫/到院雙時間）
     // =========================================================================
     function openAdminDispatchModal(preselectUid, keepExistingPin, existingCaseId, isSameCase = false, presetDest = '') {
       const selectEl = document.getElementById('dispatchTargetSelect');
@@ -2065,35 +2181,93 @@
       removeAdminDraftPin();
     }
 
-    function openRadioNoteModal(caseId) {
+    function fillRadioTimeNow(inputId) {
+      document.getElementById(inputId).value = formatTime(Date.now());
+    }
+
+    function onRadioActionChange() {
+      const actionKey = document.getElementById('radioActionSelect').value;
+      const box = document.getElementById('radioTransportDetailsBox');
+      const departGroup = document.getElementById('radioDepartTimeGroup');
+      const hospitalGroup = document.getElementById('radioHospitalTimeGroup');
+      const nowStr = formatTime(Date.now());
+
+      if (actionKey === 'TRANSPORTING' || actionKey === 'AT_HOSPITAL' || actionKey === 'TRANSPORT_BOTH') {
+        box.classList.remove('hidden');
+        if (actionKey === 'TRANSPORTING') {
+          departGroup.classList.remove('hidden');
+          hospitalGroup.classList.add('hidden');
+          if (!document.getElementById('radioDepartTime').value) {
+            document.getElementById('radioDepartTime').value = nowStr;
+          }
+        } else if (actionKey === 'AT_HOSPITAL') {
+          departGroup.classList.add('hidden');
+          hospitalGroup.classList.remove('hidden');
+          if (!document.getElementById('radioHospitalTime').value) {
+            document.getElementById('radioHospitalTime').value = nowStr;
+          }
+        } else {
+          departGroup.classList.remove('hidden');
+          hospitalGroup.classList.remove('hidden');
+          if (!document.getElementById('radioDepartTime').value) {
+            document.getElementById('radioDepartTime').value = nowStr;
+          }
+          if (!document.getElementById('radioHospitalTime').value) {
+            document.getElementById('radioHospitalTime').value = nowStr;
+          }
+        }
+      } else {
+        box.classList.add('hidden');
+      }
+    }
+
+    function openRadioNoteModal(caseId, presetAction = 'NOTE') {
       const c = allCasesData[caseId];
       if (!c) return;
       radioTargetCaseId = caseId;
 
-      document.getElementById('radioModalTitle').textContent = `🎙️ 無線電補述 · 案件 ${c.caseCode}`;
+      document.getElementById('radioModalTitle').textContent = presetAction === 'TRANSPORTING'
+        ? `🚑 代記送醫/到院 · 案件 ${c.caseCode}`
+        : `🎙️ 無線電補述 · 案件 ${c.caseCode}`;
       document.getElementById('radioModalSub').textContent = `案件摘要：${c.summary}`;
       document.getElementById('radioNoteTextarea').value = '';
-      document.getElementById('chkSyncUnitArrived').checked = false;
+      document.getElementById('radioTransportDest').value = c.transportDestination || '';
+      document.getElementById('radioDepartTime').value = c.transportDepartTime || '';
+      document.getElementById('radioHospitalTime').value = c.hospitalArriveTime || '';
+      document.getElementById('chkSyncUnitStatus').checked = true;
 
       const sel = document.getElementById('radioReporterSelect');
       let optionsHtml = '';
       const addedUids = new Set();
+      let defaultAmbVal = '';
 
       if (c.assignedUnits) {
         Object.entries(c.assignedUnits).forEach(([uid, name]) => {
           addedUids.add(uid);
-          optionsHtml += `<option value="${uid}|${escapeHtml(name)}">📻 ${escapeHtml(name)}（本案出勤單位）</option>`;
+          const val = `${uid}|${escapeHtml(name)}`;
+          if (!defaultAmbVal && name.startsWith('救護車')) defaultAmbVal = val;
+          optionsHtml += `<option value="${val}">📻 ${escapeHtml(name)}（本案出勤單位）</option>`;
         });
       }
 
       Object.values(allUnitsData).forEach(u => {
         if (!addedUids.has(u.uid) && !u.isOffline) {
-          optionsHtml += `<option value="${u.uid}|${escapeHtml(u.name)}">📻 ${escapeHtml(u.name)}</option>`;
+          const val = `${u.uid}|${escapeHtml(u.name)}`;
+          if (!defaultAmbVal && u.vehicleType === 'AMBULANCE') defaultAmbVal = val;
+          optionsHtml += `<option value="${val}">📻 ${escapeHtml(u.name)}</option>`;
         }
       });
 
       optionsHtml += `<option value="ADMIN|🛡️ 救護總站代記">🛡️ 救護總站（無線電抄收代記）</option>`;
       sel.innerHTML = optionsHtml;
+
+      if ((presetAction === 'TRANSPORTING' || presetAction === 'AT_HOSPITAL' || presetAction === 'TRANSPORT_BOTH') && defaultAmbVal) {
+        sel.value = defaultAmbVal;
+      }
+
+      const actionSel = document.getElementById('radioActionSelect');
+      actionSel.value = presetAction;
+      onRadioActionChange();
 
       document.getElementById('radioNoteModal').classList.remove('hidden');
     }
@@ -2112,23 +2286,101 @@
       if (!radioTargetCaseId || !allCasesData[radioTargetCaseId]) return;
       const reporterVal = document.getElementById('radioReporterSelect').value;
       const [reporterUid, reporterName] = reporterVal.split('|');
-      const actionLabel = document.getElementById('radioActionSelect').value;
+      const actionKey = document.getElementById('radioActionSelect').value;
       const noteText = document.getElementById('radioNoteTextarea').value.trim();
-      const syncArrived = document.getElementById('chkSyncUnitArrived').checked;
+      const syncStatus = document.getElementById('chkSyncUnitStatus').checked;
 
-      if (!noteText && actionLabel === '🎙️ 無線電回報現場狀況') {
+      const destVal = document.getElementById('radioTransportDest').value.trim();
+      const departTimeVal = document.getElementById('radioDepartTime').value.trim();
+      const hospitalTimeVal = document.getElementById('radioHospitalTime').value.trim();
+      const nowStr = formatTime(Date.now());
+
+      if (!noteText && actionKey === 'NOTE') {
         alert('請輸入無線電回報的現場狀況內容！');
         return;
       }
 
       const adminAuditCode = `總站代記-${getShortDeviceCode()}`;
-      await appendCaseTimeline(radioTargetCaseId, reporterName, actionLabel, noteText, adminAuditCode);
+      const caseUpdates = {};
+      if (destVal) caseUpdates.transportDestination = destVal;
 
-      if (syncArrived && reporterUid !== 'ADMIN' && allUnitsData[reporterUid]) {
+      let mappedUnitStatus = null;
+
+      if (actionKey === 'TRANSPORT_BOTH') {
+        const t1 = departTimeVal || nowStr;
+        const t2 = hospitalTimeVal || nowStr;
+        caseUpdates.transportDepartTime = t1;
+        caseUpdates.hospitalArriveTime = t2;
+
+        const destSuffix = destVal ? `（後送：${destVal}）` : '';
+        await appendCaseTimeline(
+          radioTargetCaseId,
+          reporterName,
+          `🚑 無線電代記：救護車送醫出發 (${t1})`,
+          `${noteText}${destSuffix}`,
+          adminAuditCode
+        );
+        await appendCaseTimeline(
+          radioTargetCaseId,
+          reporterName,
+          `🏥 無線電代記：救護車抵達醫院 (${t2})`,
+          `${noteText}${destSuffix}`,
+          adminAuditCode
+        );
+        mappedUnitStatus = 'AT_HOSPITAL';
+      } else if (actionKey === 'TRANSPORTING') {
+        const t1 = departTimeVal || nowStr;
+        caseUpdates.transportDepartTime = t1;
+        const destSuffix = destVal ? `（後送：${destVal}）` : '';
+        await appendCaseTimeline(
+          radioTargetCaseId,
+          reporterName,
+          `🚑 無線電代記：救護車送醫出發 (${t1})`,
+          `${noteText}${destSuffix}`,
+          adminAuditCode
+        );
+        mappedUnitStatus = 'TRANSPORTING';
+      } else if (actionKey === 'AT_HOSPITAL') {
+        const t2 = hospitalTimeVal || nowStr;
+        caseUpdates.hospitalArriveTime = t2;
+        const destSuffix = destVal ? `（醫院：${destVal}）` : '';
+        await appendCaseTimeline(
+          radioTargetCaseId,
+          reporterName,
+          `🏥 無線電代記：救護車抵達醫院 (${t2})`,
+          `${noteText}${destSuffix}`,
+          adminAuditCode
+        );
+        mappedUnitStatus = 'AT_HOSPITAL';
+      } else {
+        const labelMap = {
+          NOTE:      '🎙️ 無線電回報現場狀況',
+          ARRIVED:   '🏥 無線電代記：已到達現場',
+          TREATING:  '🩺 無線電代記：傷患評估/包紮處置中',
+          CONTINUED: '🏃 無線電代記：處置完畢選手續跑'
+        };
+        await appendCaseTimeline(radioTargetCaseId, reporterName, labelMap[actionKey] || '🎙️ 無線電回報', noteText, adminAuditCode);
+        if (actionKey === 'ARRIVED') mappedUnitStatus = 'ARRIVED';
+      }
+
+      if (Object.keys(caseUpdates).length > 0) {
+        await db.ref(`${DB_ROOT}/cases/${radioTargetCaseId}`).update(caseUpdates);
+      }
+
+      if (reporterUid !== 'ADMIN') {
+        await db.ref(`${DB_ROOT}/cases/${radioTargetCaseId}/assignedUnits/${reporterUid}`).set(reporterName);
+      }
+
+      if (syncStatus && mappedUnitStatus && reporterUid !== 'ADMIN' && allUnitsData[reporterUid]) {
+        const shortDescMap = {
+          ARRIVED:      '已到達現場',
+          TRANSPORTING: destVal ? `送醫往${destVal}` : '救護車送醫中',
+          AT_HOSPITAL:  destVal ? `已抵達${destVal}` : '救護車已到院'
+        };
         await db.ref(`${DB_ROOT}/units/${reporterUid}`).update({
-          status: 'ARRIVED',
+          status: mappedUnitStatus,
           activeCaseId: radioTargetCaseId,
-          lastNote: `[無線電代記] ${noteText || '已到達現場'}`,
+          lastNote: `[無線電代記] ${noteText || shortDescMap[mappedUnitStatus]}`,
           lastActionTime: Date.now(),
           updatedAt: firebase.database.ServerValue.TIMESTAMP
         });
@@ -2229,6 +2481,12 @@
         }
         if (!masterCase.transportDestination && childCase.transportDestination) {
           masterUpdates.transportDestination = childCase.transportDestination;
+        }
+        if (!masterCase.transportDepartTime && childCase.transportDepartTime) {
+          masterUpdates.transportDepartTime = childCase.transportDepartTime;
+        }
+        if (!masterCase.hospitalArriveTime && childCase.hospitalArriveTime) {
+          masterUpdates.hospitalArriveTime = childCase.hospitalArriveTime;
         }
         if (Object.keys(masterUpdates).length > 0) {
           await db.ref(`${DB_ROOT}/cases/${masterCase.caseId}`).update(masterUpdates);
@@ -2775,7 +3033,7 @@
         const isStation = unit.vehicleType === 'STATION';
         const vehIcon = isAmb ? '🚑' : (isStation ? '🏥' : '🏍️');
         const dotExtraClass = isAmb ? 'ems-marker-ambulance' : '';
-        const zOffset = unit.status === 'DISPATCHED' ? 900 : (unit.status === 'ARRIVED' ? 500 : 100);
+        const zOffset = unit.status === 'DISPATCHED' ? 900 : (unit.status === 'TRANSPORTING' ? 750 : (unit.status === 'ARRIVED' ? 500 : 100));
         const boundCase = unit.activeCaseId && allCasesData[unit.activeCaseId] ? allCasesData[unit.activeCaseId].caseCode : '';
 
         const iconHtml = `
@@ -2858,9 +3116,9 @@
                  </button>
                </div>
                <div style="display:flex; gap:4px;">
-                 <button onclick="openRadioNoteModal('${c.caseId}')"
-                   style="flex:1; padding:5px 6px; background:#7e22ce; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
-                   🎙️ 無線電補述
+                 <button onclick="openRadioNoteModal('${c.caseId}', 'TRANSPORTING')"
+                   style="flex:1; padding:5px 6px; background:#0891b2; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
+                   🚑 代記送醫/到院
                  </button>
                  <button onclick="adminForceCloseCase('${c.caseId}')"
                    style="flex:1; padding:5px 6px; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:11px; cursor:pointer;">
@@ -3003,6 +3261,19 @@
           ? 'text-red-400 font-bold'
           : (isMerged ? 'text-indigo-300 font-semibold' : 'text-emerald-400');
 
+        const hasTransportSummary = !!(c.transportDestination || c.transportDepartTime || c.hospitalArriveTime);
+        const transportSummaryHtml = hasTransportSummary ? `
+          <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 rounded-lg px-2.5 py-1.5 mb-2 space-y-0.5">
+            ${c.transportDestination ? `<div>🏥 後送醫院／總站：<b class="text-white">${escapeHtml(c.transportDestination)}</b></div>` : ''}
+            ${(c.transportDepartTime || c.hospitalArriveTime) ? `
+              <div class="flex flex-wrap gap-3 text-[11px] font-mono">
+                ${c.transportDepartTime ? `<span>🚑 送醫：<b class="text-amber-300">${escapeHtml(c.transportDepartTime)}</b></span>` : ''}
+                ${c.hospitalArriveTime ? `<span>🏥 到院：<b class="text-indigo-300">${escapeHtml(c.hospitalArriveTime)}</b></span>` : ''}
+              </div>
+            ` : ''}
+          </div>
+        ` : '<div class="mb-1"></div>';
+
         return `
           <div class="p-3 rounded-xl bg-slate-800/95 border ${isActive ? 'border-red-500/80 shadow-lg shadow-red-950/30' : (isMerged ? 'border-indigo-700/60 opacity-75' : 'border-slate-700 opacity-85')}">
             <div class="flex items-center justify-between gap-2 mb-1.5">
@@ -3021,12 +3292,7 @@
             </div>
 
             ${dispatchStatusBarHtml}
-
-            ${c.transportDestination ? `
-              <div class="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 rounded-lg px-2 py-1 mb-2">
-                🏥 後送醫院／後送總站：<b class="text-white">${escapeHtml(c.transportDestination)}</b>
-              </div>
-            ` : '<div class="mb-1"></div>'}
+            ${transportSummaryHtml}
 
             <div class="bg-slate-900/80 rounded-lg p-2 space-y-0.5 mb-2">
               ${timelineHtml || '<div class="text-[11px] text-slate-500">無時間軸明細</div>'}
@@ -3042,16 +3308,20 @@
                   class="py-1.5 px-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold">
                   ➕ 增派支援
                 </button>
+                <button onclick="openRadioNoteModal('${c.caseId}', 'TRANSPORTING')"
+                  class="py-1.5 px-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold">
+                  🚑 代記送醫/到院
+                </button>
+                <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
+                  class="py-1.5 px-2 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
+                  🎙️ 無線電補述
+                </button>
                 <button onclick="openMergeCaseModal('${c.caseId}')"
                   class="py-1.5 px-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold">
                   🔗 案號合併
                 </button>
-                <button onclick="openRadioNoteModal('${c.caseId}')"
-                  class="py-1.5 px-2 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold">
-                  🎙️ 無線電補述
-                </button>
                 <button onclick="adminForceCloseCase('${c.caseId}')"
-                  class="col-span-2 py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold">
+                  class="py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold">
                   ✅ 總站結案
                 </button>
               </div>
@@ -3069,9 +3339,9 @@
                   class="py-1.5 px-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold">
                   🔗 案號合併
                 </button>
-                <button onclick="openRadioNoteModal('${c.caseId}')"
+                <button onclick="openRadioNoteModal('${c.caseId}', 'NOTE')"
                   class="col-span-2 py-1.5 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold">
-                  🎙️ 補充事後紀錄至此結案案件
+                  🎙️ 補充事後紀錄 / 補登送醫到院時間
                 </button>
               </div>
             `)}
@@ -3157,7 +3427,7 @@
         return;
       }
 
-      const priority = { DISPATCHED: 1, ARRIVED: 2, STANDBY: 3 };
+      const priority = { DISPATCHED: 1, TRANSPORTING: 2, ARRIVED: 3, AT_HOSPITAL: 4, STANDBY: 5 };
       units.sort((a, b) => {
         const aUnacked = !!(allDispatchesData[a.uid] && !allDispatchesData[a.uid].acknowledged);
         const bUnacked = !!(allDispatchesData[b.uid] && !allDispatchesData[b.uid].acknowledged);
@@ -3275,10 +3545,12 @@
         return;
       }
 
-      let csvContent = '\uFEFF案件編號,案件狀態,立案時間,結案時間,案件摘要,後送醫院/後送總站,參與單位(含裝置碼),緯度,經度,完整時間軸明細(含操作裝置碼稽核)\n';
+      let csvContent = '\uFEFF案件編號,案件狀態,立案時間,送醫出發時間,抵達醫院時間,結案時間,案件摘要,後送醫院/後送總站,參與單位(含裝置碼),緯度,經度,完整時間軸明細(含操作裝置碼稽核)\n';
       cases.forEach(c => {
         const statusStr = c.status === 'ACTIVE' ? '進行中' : (c.status === 'MERGED' ? `已併入 ${c.mergedIntoCode || ''}` : '已結案');
         const createdStr = c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW', { hour12: false }) : '';
+        const departStr = c.transportDepartTime || '';
+        const hospStr = c.hospitalArriveTime || '';
         const closedStr = c.closedAt ? new Date(c.closedAt).toLocaleString('zh-TW', { hour12: false }) : '';
         const summary = `"${(c.summary || '').replace(/"/g, '""')}"`;
         const dest = `"${(c.transportDestination || '').replace(/"/g, '""')}"`;
@@ -3295,7 +3567,7 @@
           return `[${ts}] ${t.actor}${devTag} ${t.action}${t.note ? `(${t.note})` : ''}`;
         }).join(' -> ');
 
-        csvContent += `${c.caseCode},${statusStr},${createdStr},${closedStr},${summary},${dest},${units},${c.lat || ''},${c.lng || ''},"${tlText.replace(/"/g, '""')}"\n`;
+        csvContent += `${c.caseCode},${statusStr},${createdStr},${departStr},${hospStr},${closedStr},${summary},${dest},${units},${c.lat || ''},${c.lng || ''},"${tlText.replace(/"/g, '""')}"\n`;
       });
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
