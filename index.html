@@ -2149,13 +2149,31 @@
       }
     }
 
-    function navigateToMyActiveCase() {
-      if (!activeCaseId || !allCasesData[activeCaseId]) return;
-      const c = allCasesData[activeCaseId];
-      if (typeof c.lat === 'number' && typeof c.lng === 'number') {
-        openGoogleMapsNav(c.lat, c.lng);
-      }
-    }
+function navigateToMyActiveCase() {
+  if (!activeCaseId || !allCasesData[activeCaseId]) {
+    alert('目前沒有執行中的案件可導航。');
+    return;
+  }
+  const c = allCasesData[activeCaseId];
+  const destHospital = (c.transportDestination || '').trim();
+
+  if (destHospital && (currentStatus === 'TRANSPORTING' || currentStatus === 'AT_HOSPITAL')) {
+    openHospitalGoogleMapsNav(destHospital);
+    return;
+  }
+
+  if (typeof c.lat === 'number' && typeof c.lng === 'number') {
+    openGoogleMapsNav(c.lat, c.lng);
+    return;
+  }
+
+  if (destHospital) {
+    openHospitalGoogleMapsNav(destHospital);
+    return;
+  }
+
+  alert('此案件尚無事故點座標，也尚未填寫後送醫院。');
+}
 
     async function pinCurrentLocationToActiveCase() {
       if (!myCoords) {
